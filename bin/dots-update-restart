@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+# dots:summary=Report components needing a restart after an update
+# dots:hidden=true
+#
+# Migrations and hooks signal a needed restart by touching
+# ~/.local/state/dots/restart-<component>-required. Each marker is reported
+# once and cleared (omarchy's restart-marker pattern).
+
+state_dir="$HOME/.local/state/dots"
+
+for marker in "$state_dir"/restart-*-required; do
+  [[ -f $marker ]] || continue
+  name=${marker##*/restart-}
+  name=${name%-required}
+  case "$name" in
+    shell) echo "Restart required: shell — open a new terminal or 'source ~/.bashrc'." ;;
+    *) echo "Restart required: $name" ;;
+  esac
+  rm -f "$marker"
+done
+
+exit 0

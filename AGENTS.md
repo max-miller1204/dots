@@ -57,7 +57,11 @@ One-time repair scripts for existing installs, `migrations/<unix-timestamp>.sh`
 (create with `migrations/$(date +%s).sh`). They run through `dots-migrate`
 during `dots update`; completion markers live in
 `~/.local/state/dots/migrations/<filename>`. Migrations must be idempotent.
-Fresh installs mark all shipped migrations as applied.
+Fresh installs mark all shipped migrations as applied. A migration that
+changes something already loaded (shell config, a running service) should
+`touch ~/.local/state/dots/restart-<component>-required`; the update
+pipeline reports and clears these markers at the end
+(see [`docs/update-process.md`](docs/update-process.md)).
 
 # Config structure
 
@@ -70,5 +74,9 @@ Fresh installs mark all shipped migrations as applied.
 
 # Tests
 
-Run `./test/all` after changes to `bin/` or the theme system. Tests run in a
-sandbox `$HOME` and must not touch the real one.
+Run `./test/all` after changes to `bin/`, the theme system, or the update
+pipeline. Suites are standalone executables under `test/` (`test/cli`,
+`test/update`) sourcing `test/helpers.sh` for shared assertions and sandbox
+setup; wire new suites into `test/all`. Tests run in a sandbox `$HOME` and
+must not touch the real one — stub external commands (mise, network git)
+rather than calling them.

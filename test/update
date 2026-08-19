@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+
+# Update pipeline suite: lock, free-space guard, log analysis, restart
+# markers, update-available, and a stubbed end-to-end dots-update run.
+
+set -eo pipefail
+
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+source "$ROOT/test/helpers.sh"
+setup_sandbox
+
+git_test() { git -c user.email=test@test -c user.name=test -c commit.gpgsign=false "$@"; }
+
+# --- free-space guard
+DOTS_UPDATE_MIN_FREE_KB=1 "$ROOT/bin/dots-update-requires-free-space" ||
+  fail "free-space check failed with tiny threshold"
+if DOTS_UPDATE_MIN_FREE_KB=9999999999999 "$ROOT/bin/dots-update-requires-free-space" 2>/dev/null; then
+  fail "free-space check passed with impossible threshold"
+fi
+DOTS_UPDATE_FORCE=1 DOTS_UPDATE_MIN_FREE_KB=9999999999999 "$ROOT/bin/dots-update-requires-free-space" ||
+  fail "DOTS_UPDATE_FORCE did not bypass the free-space check"
+assertions=$((assertions + 3))
+
+# --- lock: runs commands, releases, refuses a held lock, reclaims stale
+export DOTS_UPDATE_LOCK_DIR="$SANDBOX/update.lock"
+
+out=$("$ROOT/bin/dots-update-lock" bash -c 'echo inside')
+assert_contains "$out" "inside" "lock runs its command"
+[[ ! -d $DOTS_UPDATE_LOCK_DIR ]] || fail "lock not released after the command"
+assertions=$((assertions + 1))
+
+"$ROOT/bin/dots-update-lock" bash -c 'sleep 3' &
+holder_pid=$!
+sleep 0.5
+if "$ROOT/bin/dots-update-lock" true 2>/dev/null; then
+  kill "$holder_pid" 2>/dev/null || true
+  fail "second update acquired a held lock"
+fi
+wait "$holder_pid"
+assertions=$((assertions + 1))
+
+mkdir -p "$DOTS_UPDATE_LOCK_DIR"
+sleep 0 &
+dead_pid=$!
+wait "$dead_pid"
+echo "$dead_pid" >"$DOTS_UPDATE_LOCK_DIR/pid"
+out=$("$ROOT/bin/dots-update-lock" bash -c 'echo reclaimed')
+assert_contains "$out" "reclaimed" "stale lock reclaimed"
+
+# --- log analysis
+printf 'all good\nmise ERROR could not fetch\nHook failed: /x/y\n' >"$SANDBOX/bad.log"
+out=$("$ROOT/bin/dots-update-analyze-logs" "$SANDBOX/bad.log")
+assert_contains "$out" "mise ERROR" "analyzer flags mise errors"
+assert_contains "$out" "Hook failed" "analyzer flags hook failures"
+printf 'all good\n' >"$SANDBOX/good.log"
+out=$("$ROOT/bin/dots-update-analyze-logs" "$SANDBOX/good.log")
+[[ -z $out ]] || fail "analyzer reported on a clean log"
+assertions=$((assertions + 1))
+
+# --- restart markers
+mkdir -p "$HOME/.local/state/dots"
+touch "$HOME/.local/state/dots/restart-shell-required"
+out=$("$ROOT/bin/dots-update-restart")
+assert_contains "$out" "shell" "restart marker reported"
+[[ ! -f "$HOME/.local/state/dots/restart-shell-required" ]] || fail "restart marker not cleared"
+assertions=$((assertions + 1))
+
+# --- update-available against a local upstream
+upstream="$SANDBOX/upstream"
+checkout="$SANDBOX/checkout"
+git_test init -q -b main "$upstream"
+echo one >"$upstream/file"
+git_test -C "$upstream" add file
+git_test -C "$upstream" commit -qm "c1"
+git clone -q "$upstream" "$checkout"
+
+echo two >"$upstream/file"
+git_test -C "$upstream" commit -qam "c2"
+
+out=$(DOTS_PATH="$checkout" "$ROOT/bin/dots-update-available") ||
+  fail "update-available should exit 0 when behind"
+assert_contains "$out" "c2" "pending commit listed"
+
+git -C "$checkout" pull -q
+if out=$(DOTS_PATH="$checkout" "$ROOT/bin/dots-update-available"); then
+  fail "update-available should exit non-zero when current"
+fi
+assert_contains "$out" "up to date" "up-to-date state reported"
+
+# --- end-to-end dots-update: stubbed mise, local git upstream, no network
+mkdir -p "$SANDBOX/stub"
+cat >"$SANDBOX/stub/mise" <<'EOF'
+#!/usr/bin/env bash
+echo "stub mise $*"
+EOF
+chmod +x "$SANDBOX/stub/mise"
+
+echo three >"$upstream/file"
+git_test -C "$upstream" commit -qam "c3"
+
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" DOTS_UPDATE_LOCK_DIR="$SANDBOX/e2e.lock" \
+  "$ROOT/bin/dots-update")
+assert_contains "$out" "Update complete." "pipeline completes"
+assert_contains "$out" "stub mise install" "mise sync ran"
+[[ -f "$HOME/.local/state/dots/update.log" ]] || fail "update transcript missing"
+grep -q "Update complete." "$HOME/.local/state/dots/update.log" || fail "transcript incomplete"
+[[ $(git -C "$checkout" log --oneline -1) == *c3* ]] || fail "update did not pull the new commit"
+assertions=$((assertions + 3))
+
+echo "ok: $assertions assertions passed (update)"

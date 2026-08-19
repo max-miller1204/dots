@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+
+# dots:summary=Abort the update when free disk space is too low
+# dots:hidden=true
+#
+# Ported from omarchy: silently skipped when free space cannot be
+# determined; DOTS_UPDATE_FORCE=1 bypasses. Threshold defaults to 1 GiB
+# (mise toolchain downloads), overridable via DOTS_UPDATE_MIN_FREE_KB.
+
+set -o pipefail
+
+[[ ${DOTS_UPDATE_FORCE:-} == "1" ]] && exit 0
+
+min_free_kb=${DOTS_UPDATE_MIN_FREE_KB:-1048576}
+
+avail_kb=$(df -Pk "$HOME" 2>/dev/null | awk 'NR == 2 { print $4 }')
+[[ $avail_kb =~ ^[0-9]+$ ]] || exit 0
+
+if ((avail_kb < min_free_kb)); then
+  echo "Not enough free disk space for an update:" >&2
+  echo "  available: $((avail_kb / 1024)) MiB, required: $((min_free_kb / 1024)) MiB" >&2
+  echo "Free some space, or bypass with DOTS_UPDATE_FORCE=1." >&2
+  exit 1
+fi

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+# dots:summary=Scan an update transcript for known failure signatures
+# dots:args=[log-file]
+# dots:hidden=true
+#
+# High-signal patterns only, like omarchy's analyzer: it points at problems
+# buried in the scrollback, it never fails the update. Grow this list only
+# for signatures that reliably mean something went wrong.
+
+log_file=${1:-$HOME/.local/state/dots/update.log}
+[[ -f $log_file ]] || exit 0
+
+matches=$(grep -E 'mise ERROR|Hook failed:|fatal: |Could not fast-forward' "$log_file" | sort -u | head -10)
+
+if [[ -n $matches ]]; then
+  echo
+  echo "Potential problems detected during this update:"
+  printf '%s\n' "$matches" | sed 's/^/  /'
+  echo "Full transcript: $log_file"
+fi
+
+exit 0

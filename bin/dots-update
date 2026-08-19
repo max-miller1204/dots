@@ -1,15 +1,37 @@
 #!/usr/bin/env bash
 
 # dots:summary=Update dotfiles: pull the repo, sync packages, run migrations and hooks
+#
+# The omarchy update pipeline, ported:
+#   transcript log -> lock -> free-space check -> git pull -> mise sync
+#   -> migrations -> post-update hook -> log analysis -> restart checks
 
 set -eo pipefail
 
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
 
 if [[ ! -d $DOTS_PATH ]]; then
   echo "No dotfiles checkout at $DOTS_PATH" >&2
   exit 1
 fi
+
+# Serialize with any other running update: re-exec under the lock once.
+if [[ -z ${DOTS_UPDATE_LOCKED:-} ]]; then
+  export DOTS_UPDATE_LOCKED=1
+  exec "$SELF_DIR/dots-update-lock" "$SELF_DIR/dots-update" "$@"
+fi
+
+# Transcript: mirror everything into the update log, fresh per run, so
+# dots-update-analyze-logs only ever sees the current transcript.
+LOG_FILE="$HOME/.local/state/dots/update.log"
+mkdir -p "$(dirname "$LOG_FILE")"
+: >"$LOG_FILE"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+echo "=== dots update: $(date) ==="
+
+"$SELF_DIR/dots-update-requires-free-space"
 
 # 1. Fast-forward the checkout, but never touch local work in progress.
 if git -C "$DOTS_PATH" rev-parse --git-dir >/dev/null 2>&1; then
@@ -34,7 +56,11 @@ if command -v mise >/dev/null 2>&1; then
 fi
 
 # 3. Migrations, then the post-update hook — same order as omarchy update.
-"$DOTS_PATH/bin/dots-migrate"
-"$DOTS_PATH/bin/dots-hook" post-update
+"$SELF_DIR/dots-migrate"
+"$SELF_DIR/dots-hook" post-update
+
+# 4. Point at problems buried in the transcript, then report restarts.
+"$SELF_DIR/dots-update-analyze-logs" "$LOG_FILE"
+"$SELF_DIR/dots-update-restart"
 
 echo "Update complete."

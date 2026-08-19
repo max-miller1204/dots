@@ -48,7 +48,8 @@ themes/<name>/colors.toml  →  staged + rendered by dots-theme-set
 
 - `~/.local/state/dots/` — machine state, never versioned: migration markers
   (`migrations/`), done markers (`done/`), the generated active theme
-  (`current/theme`, `current/theme.name`), and `install.log`.
+  (`current/theme`, `current/theme.name`), install/update transcripts
+  (`install.log`, `update.log`), and `restart-*-required` markers.
 - `~/.config/dots/` — files you may intentionally version: hooks
   (`hooks/<event>.d/`), user themes (`themes/<name>/`), user templates
   (`themed/*.tpl`), and `dots.conf` for non-default checkout locations.

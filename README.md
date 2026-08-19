@@ -30,7 +30,8 @@ Run `dots` for the full listing. Highlights:
 | Command | Purpose |
 | --- | --- |
 | `dots install` | First-time setup: packages, configs, shell, default theme |
-| `dots update` | Pull the repo, sync packages, run migrations, fire `post-update` hooks |
+| `dots update` | The full pipeline: lock, transcript log, free-space check, pull, package sync, migrations, hooks, failure scan, restart checks ([details](docs/update-process.md)) |
+| `dots update available` | Exit 0 + pending commits when behind the remote; non-zero when current |
 | `dots migrate [--pending]` | Run (or list) pending migrations |
 | `dots refresh config <path>` | Reset one config file to the shipped default, with backup + diff |
 | `dots reinstall configs` | Reset all configs to shipped defaults |

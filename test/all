@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 
-# Aggregate test runner.
+# Aggregate test runner: every suite under test/ (omarchy's ./test/all role).
 
 set -eo pipefail
 
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 
 "$ROOT/test/cli"
+"$ROOT/test/update"
+
+echo "all suites passed"

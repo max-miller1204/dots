@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+
+# dots:summary=Run a command while holding the per-user update lock
+# dots:args=<command> [args...]
+# dots:hidden=true
+#
+# mkdir-based rather than omarchy's flock(1), which macOS doesn't ship;
+# mkdir is atomic on both userlands. A lock whose recorded PID is no longer
+# alive is treated as stale and reclaimed.
+
+set -eo pipefail
+
+if (($# < 1)); then
+  echo "Usage: dots-update-lock <command> [args...]" >&2
+  exit 1
+fi
+
+LOCK_DIR="${DOTS_UPDATE_LOCK_DIR:-${TMPDIR:-/tmp}/dots-update-$(id -u).lock}"
+
+acquire() {
+  mkdir "$LOCK_DIR" 2>/dev/null
+}
+
+if ! acquire; then
+  holder=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
+  if [[ -n $holder ]] && kill -0 "$holder" 2>/dev/null; then
+    echo "Another dots update is already running (pid $holder)." >&2
+    exit 1
+  fi
+  rm -rf "$LOCK_DIR"
+  if ! acquire; then
+    echo "Could not acquire the update lock at $LOCK_DIR." >&2
+    exit 1
+  fi
+fi
+
+echo $$ >"$LOCK_DIR/pid"
+trap 'rm -rf "$LOCK_DIR"' EXIT
+
+"$@" && rc=0 || rc=$?
+exit "$rc"

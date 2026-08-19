@@ -6,21 +6,7 @@
 set -eo pipefail
 
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-
-assertions=0
-
-fail() {
-  echo "FAIL: $*" >&2
-  exit 1
-}
-
-assert_contains() { # assert_contains <haystack> <needle> <label>
-  case "$1" in
-    *"$2"*) assertions=$((assertions + 1)) ;;
-    *) fail "$3: expected to find '$2' in output:
-$1" ;;
-  esac
-}
+source "$ROOT/test/helpers.sh"
 
 # Syntax-check every script
 for f in "$ROOT"/bin/*; do
@@ -28,15 +14,10 @@ for f in "$ROOT"/bin/*; do
 done
 while IFS= read -r f; do
   bash -n "$f" || fail "syntax error in $f"
-done < <(find "$ROOT/install" "$ROOT/test" -type f \( -name '*.sh' -o -name 'cli' -o -name 'all' \))
+done < <(find "$ROOT/install" "$ROOT/test" -type f \( -name '*.sh' -o -name 'cli' -o -name 'update' -o -name 'all' \))
 assertions=$((assertions + 1))
 
-# Sandbox environment
-SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/dots-test.XXXXXX")
-trap 'rm -rf "$SANDBOX"' EXIT
-export HOME="$SANDBOX"
-export DOTS_PATH="$ROOT"
-export PATH="$ROOT/bin:$PATH"
+setup_sandbox
 
 # Router: group listing
 out=$("$ROOT/bin/dots")
@@ -126,4 +107,4 @@ if "$ROOT/bin/dots-done" ensure test-marker 2>/dev/null; then
 fi
 assertions=$((assertions + 2))
 
-echo "ok: $assertions assertions passed"
+echo "ok: $assertions assertions passed (cli)"
