@@ -3,3 +3,4 @@
 # install/config/all.sh pattern).
 
 source "$DOTS_PATH/install/config/macos.sh"
+source "$DOTS_PATH/install/config/linux.sh"

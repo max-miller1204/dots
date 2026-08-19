@@ -1,18 +1,23 @@
 #!/bin/bash
 
-# dots:summary=Remove packages with Homebrew
-# dots:args=<package...>
+# dots:summary=Remove a tool from the global mise config
+# dots:args=<tool...>
+# dots:examples=dots pkg drop ripgrep
 
 set -eo pipefail
 
 if (( $# < 1 )); then
-  echo "Usage: dots-pkg-drop <package...>" >&2
+  echo "Usage: dots-pkg-drop <tool...>" >&2
   exit 1
 fi
 
-if ! command -v brew >/dev/null 2>&1; then
-  echo "Homebrew is not installed. Get it from https://brew.sh first." >&2
+if ! command -v mise >/dev/null 2>&1; then
+  echo "mise is not installed. See https://mise.jdx.dev/getting-started.html" >&2
   exit 1
 fi
 
-brew uninstall "$@"
+mise unuse --global "$@"
+
+echo
+echo "Removed from ~/.config/mise/config.toml. Persist it in the repo with:"
+echo "  dots config import mise/config.toml"

@@ -11,6 +11,11 @@ This repo replicates omarchy's dotfiles architecture on macOS. Read
 - **macOS `/bin/bash` is 3.2** — unlike omarchy's bash 5 rules, do NOT use
   `declare -A`, `mapfile`, `${var,,}`, `&>>`, or globstar. `[[ ]]`, `(( ))`,
   `[[ =~ ]]`, and `${@:n}` slicing are fine.
+- **Scripts must run on macOS (BSD userland) and Ubuntu/WSL (GNU userland)** —
+  avoid flags that differ between them (`sed -i` without a suffix, `date -r`,
+  `ls --color` outside a `uname` guard). mise is the only package layer; never
+  reach for brew or apt in shared code (OS-specific leaves under
+  `install/config/` are the place for that).
 - Use `[[ ]]` for string/file tests and `(( ))` for numeric tests
 - In `[[ ]]`, don't quote variables, but do quote string literals when comparing
 - For strings/paths with spaces, quote them instead of escaping spaces
@@ -37,7 +42,7 @@ Command metadata is comment-based, scanned from the first 20 lines:
 Use these instead of raw shell commands:
 
 - `dots-cmd-missing` / `dots-cmd-present` — check for commands
-- `dots-pkg-add` / `dots-pkg-drop` — Homebrew install/uninstall
+- `dots-pkg-add` / `dots-pkg-drop` — global tools via `mise use/unuse --global`
 - `dots-done <check|mark|ensure> <name>` — one-time-step markers
 - `dots-refresh-config <path>` — copy a shipped config to `~/.config` with backup
 

@@ -25,14 +25,12 @@ if git -C "$DOTS_PATH" rev-parse --git-dir >/dev/null 2>&1; then
   fi
 fi
 
-# 2. Packages
-if command -v brew >/dev/null 2>&1; then
-  echo "Syncing Homebrew packages..."
-  brew bundle --file="$DOTS_PATH/install/packages/Brewfile" || true
-fi
+# 2. Packages: install anything newly pinned in the manifest, then upgrade.
 if command -v mise >/dev/null 2>&1; then
-  echo "Updating mise-managed tools..."
+  echo "Syncing mise tools..."
+  mise install || true
   mise upgrade || true
+  mise self-update --yes >/dev/null 2>&1 || true
 fi
 
 # 3. Migrations, then the post-update hook — same order as omarchy update.

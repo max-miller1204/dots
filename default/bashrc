@@ -8,9 +8,13 @@
 # Tool activation
 command -v mise >/dev/null 2>&1 && eval "$(mise activate bash)"
 
-# Aliases
-alias ls='ls -G'
-alias ll='ls -lahG'
+# Aliases (BSD ls on macOS, GNU ls on Linux/WSL)
+if [ "$(uname -s)" = "Darwin" ]; then
+  alias ls='ls -G'
+else
+  alias ls='ls --color=auto'
+fi
+alias ll='ls -lah'
 alias g='git'
 
 # Prompt: directory in blue, $ in plain

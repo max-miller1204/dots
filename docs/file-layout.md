@@ -7,7 +7,9 @@ units, the Quickshell desktop).
 
 ## Mental model
 
-The checkout at `~/dotfiles` *is* the install — there is no package layer.
+The checkout at `~/dotfiles` *is* the install — there is no distro package
+layer. The same checkout runs on macOS, Ubuntu, and WSL; tools come from mise
+(manifest: `config/mise/config.toml`), never brew or apt.
 `$DOTS_PATH` points at it (set by `default/bash/env-bootstrap`, sourced from
 `~/.bashrc` and `~/.zshrc`; non-default locations are recorded in
 `~/.config/dots/dots.conf`, the analog of omarchy's `/etc/omarchy.conf`).

@@ -22,7 +22,7 @@ group_description() {
     hook) echo "User hook runner" ;;
     install) echo "First-time setup" ;;
     migrate) echo "Migration runner" ;;
-    pkg) echo "Package management helpers (Homebrew)" ;;
+    pkg) echo "Package management helpers (mise)" ;;
     refresh) echo "Reset a config file to the repo default" ;;
     reinstall) echo "Reinstall and reset workflows" ;;
     theme) echo "Theme management" ;;

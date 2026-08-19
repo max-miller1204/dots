@@ -1,6 +1,16 @@
-# Global mise configuration (adopted from ~/.config/mise/config.toml).
-# Pin global tool versions here, e.g.:
+# Global mise configuration — the cross-OS package manifest for these
+# dotfiles (macOS, Ubuntu, WSL). Seeded to ~/.config/mise/config.toml;
+# `dots install` and `dots update` run `mise install` against it.
+#
+# Add tools with `dots pkg add <tool>`, then persist your live copy back
+# into the repo with `dots config import mise/config.toml`.
 #
 # [tools]
 # node = "lts"
 # python = "3.13"
+# ripgrep = "latest"
+# fd = "latest"
+# fzf = "latest"
+# jq = "latest"
+# gh = "latest"
+# lazygit = "latest"

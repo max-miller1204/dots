@@ -1,18 +1,23 @@
 #!/bin/bash
 
-# dots:summary=Install packages with Homebrew
-# dots:args=<package...>
+# dots:summary=Install a tool globally with mise
+# dots:args=<tool[@version]...>
+# dots:examples=dots pkg add ripgrep | dots pkg add node@lts
 
 set -eo pipefail
 
 if (( $# < 1 )); then
-  echo "Usage: dots-pkg-add <package...>" >&2
+  echo "Usage: dots-pkg-add <tool[@version]...>" >&2
   exit 1
 fi
 
-if ! command -v brew >/dev/null 2>&1; then
-  echo "Homebrew is not installed. Get it from https://brew.sh first." >&2
+if ! command -v mise >/dev/null 2>&1; then
+  echo "mise is not installed. See https://mise.jdx.dev/getting-started.html" >&2
   exit 1
 fi
 
-brew install "$@"
+mise use --global "$@"
+
+echo
+echo "Recorded in ~/.config/mise/config.toml. Persist it in the repo with:"
+echo "  dots config import mise/config.toml"

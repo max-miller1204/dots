@@ -1,18 +1,21 @@
-# Sourced by dots-install: install packages and tool versions.
+# Sourced by dots-install: install tools with mise.
+#
+# The package manifest is config/mise/config.toml, seeded to
+# ~/.config/mise/config.toml — the same manifest on every OS (macOS, Ubuntu,
+# WSL). `mise install` installs whatever it pins.
 
 echo "Installing packages..."
 
-if command -v brew >/dev/null 2>&1; then
-  brew bundle --file="$DOTS_PATH/install/packages/Brewfile"
-else
-  echo "Homebrew not found — skipping Brewfile."
-  echo "Install it from https://brew.sh, then re-run: dots install"
+mise_bin=""
+if command -v mise >/dev/null 2>&1; then
+  mise_bin=$(command -v mise)
+elif [[ -x "$HOME/.local/bin/mise" ]]; then
+  mise_bin="$HOME/.local/bin/mise"
 fi
 
-if command -v mise >/dev/null 2>&1; then
-  echo "Installing mise-managed tools..."
-  mise install || true
-elif [[ -x "$HOME/.local/bin/mise" ]]; then
-  echo "Installing mise-managed tools..."
-  "$HOME/.local/bin/mise" install || true
+if [[ -n $mise_bin ]]; then
+  "$mise_bin" install || echo "Some mise tools failed to install; re-run 'mise install' to retry."
+else
+  echo "mise not found — install it first (https://mise.jdx.dev/getting-started.html),"
+  echo "then re-run: dots install"
 fi

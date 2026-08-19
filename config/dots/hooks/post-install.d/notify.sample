@@ -1,4 +1,10 @@
 # Example post-install hook. Drop the .sample suffix to activate.
-# Runs at the end of `dots install`.
+# Runs at the end of `dots install`, on any OS.
 
-osascript -e 'display notification "Dotfiles installed" with title "dots"'
+if [ "$(uname -s)" = "Darwin" ]; then
+  osascript -e 'display notification "Dotfiles installed" with title "dots"'
+elif command -v notify-send >/dev/null 2>&1; then
+  notify-send "dots" "Dotfiles installed"
+else
+  echo "Dotfiles installed."
+fi

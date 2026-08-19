@@ -1,8 +1,12 @@
 # dotfiles
 
-Personal dotfiles for macOS, built the way [omarchy](https://github.com/basecamp/omarchy) does it: configs are **copied, not symlinked**, a namespaced CLI in `bin/` manages everything, one-time repairs ship as **migrations**, and colors come from a **theme system** that renders templates from `colors.toml` palettes.
+Personal dotfiles for macOS, Ubuntu, and WSL, built the way [omarchy](https://github.com/basecamp/omarchy) does it: configs are **copied, not symlinked**, a namespaced CLI in `bin/` manages everything, one-time repairs ship as **migrations**, and colors come from a **theme system** that renders templates from `colors.toml` palettes.
+
+[mise](https://mise.jdx.dev) is the only package layer — the same tool manifest installs the same tools on every OS, so there's no Homebrew/apt split to maintain.
 
 ## Install
+
+Prerequisites: git and [mise](https://mise.jdx.dev/getting-started.html).
 
 ```bash
 git clone <your-remote> ~/dotfiles
@@ -33,7 +37,18 @@ Run `dots` for the full listing. Highlights:
 | `dots config import <path>` | Copy a file from `~/.config` into the repo |
 | `dots theme list` / `set <name>` / `current` | Theme management |
 | `dots hook <event>` / `hook install <event> <script>` | Run or install user hooks |
-| `dots pkg add <pkg>` / `drop <pkg>` | Homebrew wrappers |
+| `dots pkg add <tool>` / `drop <tool>` | Add/remove global tools via mise |
+
+## Packages
+
+The tool manifest is [config/mise/config.toml](config/mise/config.toml), seeded to `~/.config/mise/config.toml`. `dots install` and `dots update` run `mise install` against it, so every machine converges on the same tools. The workflow:
+
+```bash
+dots pkg add ripgrep              # mise use --global ripgrep
+dots config import mise/config.toml   # persist the manifest in the repo
+```
+
+Then commit, and `dots update` on your other machines picks it up.
 
 ## Themes
 

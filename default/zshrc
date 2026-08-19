@@ -7,6 +7,10 @@
 
 command -v mise >/dev/null 2>&1 && eval "$(mise activate zsh)"
 
-alias ls='ls -G'
-alias ll='ls -lahG'
+if [ "$(uname -s)" = "Darwin" ]; then
+  alias ls='ls -G'
+else
+  alias ls='ls --color=auto'
+fi
+alias ll='ls -lah'
 alias g='git'
