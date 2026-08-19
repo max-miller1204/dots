@@ -49,6 +49,7 @@ seed_home_file() { # seed_home_file <repo-file> <home-file>
 }
 
 seed_home_file default/bashrc .bashrc
+seed_home_file default/bash_profile .bash_profile
 seed_home_file default/zshrc .zshrc
 
 # 4. System-side and user-side setup

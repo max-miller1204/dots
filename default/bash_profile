@@ -1,0 +1,12 @@
+# This file is yours. It is seeded from ~/dotfiles/default/bash_profile at
+# install (with a backup of any previous version) and never touched by
+# `dots update`. `dots reinstall configs` resets it to the shipped default.
+#
+# macOS terminals open *login* shells, which read this file and skip
+# ~/.bashrc entirely — so everything lives in ~/.bashrc and this file
+# delegates to it. Linux terminals open non-login shells and hit ~/.bashrc
+# directly, making the two OSes behave the same.
+
+export BASH_SILENCE_DEPRECATION_WARNING=1
+
+[ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"

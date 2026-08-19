@@ -31,7 +31,9 @@ Your live files in `~/.config` are yours; the repo holds the defaults.
 ```
 bin/dots-*                 →  on PATH via env-bootstrap (checkout, not /usr/bin)
 config/**                  →  ~/.config/**                  (seed + resync source)
-default/bashrc, zshrc      →  ~/.bashrc, ~/.zshrc           (seeded once, then yours)
+default/bashrc, bash_profile, zshrc
+                           →  ~/.bashrc, ~/.bash_profile, ~/.zshrc  (seeded, then yours;
+                              bash_profile delegates to bashrc for macOS login shells)
 default/bash/env-bootstrap →  sourced by both rc files      (DOTS_PATH + PATH)
 default/themed/*.tpl       →  rendered into the active theme
 install/**                 →  run by dots-install

@@ -12,7 +12,8 @@ DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
 # fall back on.
 if [[ ${1:-} != "--force" ]]; then
   echo "This overwrites your ~/.config copies of every file in $DOTS_PATH/config,"
-  echo "plus ~/.bashrc and ~/.zshrc, with the shipped defaults. No backups are kept."
+  echo "plus ~/.bashrc, ~/.bash_profile, and ~/.zshrc, with the shipped defaults."
+  echo "No backups are kept."
   printf 'Continue? [y/N] '
   read -r reply
   [[ $reply == "y" || $reply == "Y" ]] || { echo "Aborted."; exit 1; }
@@ -28,6 +29,7 @@ fi
 )
 
 cp -f "$DOTS_PATH/default/bashrc" "$HOME/.bashrc"
+cp -f "$DOTS_PATH/default/bash_profile" "$HOME/.bash_profile"
 cp -f "$DOTS_PATH/default/zshrc" "$HOME/.zshrc"
 
 echo "Configs reset to shipped defaults."
