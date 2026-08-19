@@ -31,7 +31,7 @@ Run `dots` for the full listing. Highlights:
 | --- | --- |
 | `dots install` | First-time setup: packages, configs, shell, default theme |
 | `dots update` | The full pipeline: lock, transcript log, free-space check, pull, package sync, migrations, hooks, failure scan, restart checks ([details](docs/update-process.md)) |
-| `dots update available` | Exit 0 + pending commits when behind the remote; non-zero when current |
+| `dots update available` | Exit 0 + pending commits when behind; 1 when current; 2 when it can't tell |
 | `dots migrate [--pending]` | Run (or list) pending migrations |
 | `dots refresh config <path>` | Reset one config file to the shipped default, with backup + diff |
 | `dots reinstall configs` | Reset all configs to shipped defaults |

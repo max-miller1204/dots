@@ -3,10 +3,12 @@
 # dots:summary=Check whether dotfiles updates are available
 # dots:examples=dots update available
 #
-# Exit 0 and print the pending commits when updates are available; exit
-# non-zero when up to date (omarchy-update-available semantics, so it drops
-# straight into a prompt segment or status script). A failed fetch is quiet
-# and falls back to the existing remote-tracking state.
+# Exit codes, distinct so scripts can tell the states apart:
+#   0 — updates available (pending commits printed)
+#   1 — up to date
+#   2 — cannot determine (not a checkout, no remote, or no upstream)
+# A failed fetch is quiet and falls back to the existing remote-tracking
+# state, so this works offline (omarchy-update-available semantics).
 
 set -o pipefail
 
@@ -14,19 +16,19 @@ DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
 
 if ! git -C "$DOTS_PATH" rev-parse --git-dir >/dev/null 2>&1; then
   echo "Not a git checkout: $DOTS_PATH" >&2
-  exit 1
+  exit 2
 fi
 
 if ! git -C "$DOTS_PATH" remote get-url origin >/dev/null 2>&1; then
   echo "No git remote configured." >&2
-  exit 1
+  exit 2
 fi
 
 git -C "$DOTS_PATH" fetch -q 2>/dev/null || true
 
 if ! upstream=$(git -C "$DOTS_PATH" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null); then
   echo "No upstream tracking branch." >&2
-  exit 1
+  exit 2
 fi
 
 behind=$(git -C "$DOTS_PATH" rev-list --count "HEAD..$upstream")

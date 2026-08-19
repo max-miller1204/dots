@@ -82,10 +82,25 @@ out=$(DOTS_PATH="$checkout" "$ROOT/bin/dots-update-available") ||
 assert_contains "$out" "c2" "pending commit listed"
 
 git -C "$checkout" pull -q
-if out=$(DOTS_PATH="$checkout" "$ROOT/bin/dots-update-available"); then
-  fail "update-available should exit non-zero when current"
-fi
+rc=0
+out=$(DOTS_PATH="$checkout" "$ROOT/bin/dots-update-available") || rc=$?
+((rc == 1)) || fail "up-to-date should exit 1 (got $rc)"
 assert_contains "$out" "up to date" "up-to-date state reported"
+
+# no remote / no upstream are exit 2, distinguishable from "up to date"
+noremote="$SANDBOX/noremote"
+git_test init -q -b main "$noremote"
+git_test -C "$noremote" commit -q --allow-empty -m x
+rc=0
+DOTS_PATH="$noremote" "$ROOT/bin/dots-update-available" >/dev/null 2>&1 || rc=$?
+((rc == 2)) || fail "no-remote should exit 2 (got $rc)"
+assertions=$((assertions + 2))
+
+# unknown arguments are rejected before anything runs
+rc=0
+out=$("$ROOT/bin/dots-update" --dry-run 2>&1) || rc=$?
+((rc == 1)) || fail "dots-update with unknown args should exit 1 (got $rc)"
+assert_contains "$out" "Usage: dots update" "unknown args rejected with usage"
 
 # --- end-to-end dots-update: stubbed mise, local git upstream, no network
 mkdir -p "$SANDBOX/stub"
@@ -106,5 +121,14 @@ assert_contains "$out" "stub mise install" "mise sync ran"
 grep -q "Update complete." "$HOME/.local/state/dots/update.log" || fail "transcript incomplete"
 [[ $(git -C "$checkout" log --oneline -1) == *c3* ]] || fail "update did not pull the new commit"
 assertions=$((assertions + 3))
+
+# an incomplete previous transcript is preserved and reported
+printf '=== dots update: earlier ===\ndied here\n' >"$HOME/.local/state/dots/update.log"
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" DOTS_UPDATE_LOCK_DIR="$SANDBOX/e2e2.lock" \
+  "$ROOT/bin/dots-update")
+assert_contains "$out" "did not finish cleanly" "incomplete previous run reported"
+[[ -f "$HOME/.local/state/dots/update.log.prev" ]] || fail "previous transcript not preserved"
+grep -q "died here" "$HOME/.local/state/dots/update.log.prev" || fail "preserved transcript lost content"
+assertions=$((assertions + 2))
 
 echo "ok: $assertions assertions passed (update)"

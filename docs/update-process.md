@@ -25,6 +25,7 @@ dots-update
 | --- | --- |
 | `${TMPDIR:-/tmp}/dots-update-<uid>.lock/` | Update lock (dir + `pid` file). Stale locks are reclaimed. |
 | `~/.local/state/dots/update.log` | Transcript of the last `dots update`, read by the analyzer. |
+| `~/.local/state/dots/update.log.prev` | Preserved transcript of a run that died or aborted; the next update reports it instead of silently truncating. |
 | `~/.local/state/dots/restart-<component>-required` | Restart markers, reported and cleared at the end of an update. |
 | `~/.local/state/dots/migrations/` | Per-machine migration completion markers. |
 
@@ -41,8 +42,13 @@ touch ~/.local/state/dots/restart-shell-required
 
 ## Update indicator
 
-`dots update available` is the omarchy `omarchy-update-available` port:
-exit 0 and the pending commit list when the checkout is behind its
-upstream, non-zero when current. A failed fetch is quiet and falls back to
-the existing remote-tracking state, so it works offline. Wire it into a
-prompt segment, a login check, or a scheduled job as you like.
+`dots update available` is the omarchy `omarchy-update-available` port.
+Exit codes are distinct so scripts can tell the states apart:
+
+- `0` — updates available (pending commits printed)
+- `1` — up to date
+- `2` — cannot determine (not a checkout, no remote, or no upstream)
+
+A failed fetch is quiet and falls back to the existing remote-tracking
+state, so it works offline. Wire it into a prompt segment, a login check,
+or a scheduled job as you like.

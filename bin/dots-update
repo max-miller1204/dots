@@ -11,6 +11,14 @@ set -eo pipefail
 SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
 
+# No options exist; swallowing an unknown flag (say, --dry-run) and running a
+# real update anyway would be worse than refusing.
+if (($#)); then
+  echo "dots-update: unknown arguments: $*" >&2
+  echo "Usage: dots update" >&2
+  exit 1
+fi
+
 if [[ ! -d $DOTS_PATH ]]; then
   echo "No dotfiles checkout at $DOTS_PATH" >&2
   exit 1
@@ -23,13 +31,25 @@ if [[ -z ${DOTS_UPDATE_LOCKED:-} ]]; then
 fi
 
 # Transcript: mirror everything into the update log, fresh per run, so
-# dots-update-analyze-logs only ever sees the current transcript.
+# dots-update-analyze-logs only ever sees the current transcript. A previous
+# transcript without the completion line means that run died or aborted —
+# preserve it and say so instead of silently truncating the evidence.
 LOG_FILE="$HOME/.local/state/dots/update.log"
 mkdir -p "$(dirname "$LOG_FILE")"
+
+prev_incomplete=""
+if [[ -s $LOG_FILE ]] && ! grep -q "Update complete." "$LOG_FILE"; then
+  mv -f "$LOG_FILE" "$LOG_FILE.prev"
+  prev_incomplete=1
+fi
+
 : >"$LOG_FILE"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "=== dots update: $(date) ==="
+if [[ -n $prev_incomplete ]]; then
+  echo "Note: the previous update did not finish cleanly (transcript: $LOG_FILE.prev)."
+fi
 
 "$SELF_DIR/dots-update-requires-free-space"
 
