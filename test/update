@@ -11,6 +11,15 @@ setup_sandbox
 
 git_test() { git -c user.email=test@test -c user.name=test -c commit.gpgsign=false "$@"; }
 
+# Stub mise up front: several later invocations run the full dots-update
+# pipeline, and none of them may touch the real mise.
+mkdir -p "$SANDBOX/stub"
+cat >"$SANDBOX/stub/mise" <<'EOF'
+#!/usr/bin/env bash
+echo "stub mise $*"
+EOF
+chmod +x "$SANDBOX/stub/mise"
+
 # --- free-space guard
 DOTS_UPDATE_MIN_FREE_KB=1 "$ROOT/bin/dots-update-requires-free-space" ||
   fail "free-space check failed with tiny threshold"
@@ -21,29 +30,44 @@ DOTS_UPDATE_FORCE=1 DOTS_UPDATE_MIN_FREE_KB=9999999999999 "$ROOT/bin/dots-update
   fail "DOTS_UPDATE_FORCE did not bypass the free-space check"
 assertions=$((assertions + 3))
 
-# --- lock: runs commands, releases, refuses a held lock, reclaims stale
-export DOTS_UPDATE_LOCK_DIR="$SANDBOX/update.lock"
+# malformed threshold fails closed, not open
+rc=0
+out=$(DOTS_UPDATE_MIN_FREE_KB=1G "$ROOT/bin/dots-update-requires-free-space" 2>&1) || rc=$?
+((rc == 1)) || fail "malformed threshold should fail closed (got $rc)"
+assert_contains "$out" "Invalid DOTS_UPDATE_MIN_FREE_KB" "malformed threshold reported"
+assertions=$((assertions + 1))
+
+# --- lock: runs commands, releases, refuses a held lock, survives signals,
+# reclaims stale
+export DOTS_UPDATE_LOCK="$SANDBOX/update.lock"
 
 out=$("$ROOT/bin/dots-update-lock" bash -c 'echo inside')
 assert_contains "$out" "inside" "lock runs its command"
-[[ ! -d $DOTS_UPDATE_LOCK_DIR ]] || fail "lock not released after the command"
+[[ ! -e $DOTS_UPDATE_LOCK ]] || fail "lock not released after the command"
 assertions=$((assertions + 1))
 
-"$ROOT/bin/dots-update-lock" bash -c 'sleep 3' &
+"$ROOT/bin/dots-update-lock" sleep 3 &
 holder_pid=$!
 sleep 0.5
 if "$ROOT/bin/dots-update-lock" true 2>/dev/null; then
   kill "$holder_pid" 2>/dev/null || true
   fail "second update acquired a held lock"
 fi
-wait "$holder_pid"
 assertions=$((assertions + 1))
 
-mkdir -p "$DOTS_UPDATE_LOCK_DIR"
+# SIGTERM on the wrapper forwards to the child; the lock is cleaned up only
+# once the child is gone, never left behind and never freed early
+kill -TERM "$holder_pid" 2>/dev/null
+wait "$holder_pid" 2>/dev/null || true
+sleep 0.2
+[[ ! -e $DOTS_UPDATE_LOCK ]] || fail "lock left behind after SIGTERM"
+assertions=$((assertions + 1))
+
+# a stale lock (dead holder) is reclaimed
 sleep 0 &
 dead_pid=$!
 wait "$dead_pid"
-echo "$dead_pid" >"$DOTS_UPDATE_LOCK_DIR/pid"
+ln -s "$dead_pid" "$DOTS_UPDATE_LOCK"
 out=$("$ROOT/bin/dots-update-lock" bash -c 'echo reclaimed')
 assert_contains "$out" "reclaimed" "stale lock reclaimed"
 
@@ -96,25 +120,20 @@ DOTS_PATH="$noremote" "$ROOT/bin/dots-update-available" >/dev/null 2>&1 || rc=$?
 ((rc == 2)) || fail "no-remote should exit 2 (got $rc)"
 assertions=$((assertions + 2))
 
-# unknown arguments are rejected before anything runs
+# unknown arguments are rejected before anything runs; the stubbed PATH and
+# throwaway DOTS_PATH keep a guard regression from ever touching the real
+# checkout or the real mise
 rc=0
-out=$("$ROOT/bin/dots-update" --dry-run 2>&1) || rc=$?
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$SANDBOX/no-such-checkout" \
+  "$ROOT/bin/dots-update" --dry-run 2>&1) || rc=$?
 ((rc == 1)) || fail "dots-update with unknown args should exit 1 (got $rc)"
 assert_contains "$out" "Usage: dots update" "unknown args rejected with usage"
 
 # --- end-to-end dots-update: stubbed mise, local git upstream, no network
-mkdir -p "$SANDBOX/stub"
-cat >"$SANDBOX/stub/mise" <<'EOF'
-#!/usr/bin/env bash
-echo "stub mise $*"
-EOF
-chmod +x "$SANDBOX/stub/mise"
-
 echo three >"$upstream/file"
 git_test -C "$upstream" commit -qam "c3"
 
-out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" DOTS_UPDATE_LOCK_DIR="$SANDBOX/e2e.lock" \
-  "$ROOT/bin/dots-update")
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update")
 assert_contains "$out" "Update complete." "pipeline completes"
 assert_contains "$out" "stub mise install" "mise sync ran"
 [[ -f "$HOME/.local/state/dots/update.log" ]] || fail "update transcript missing"
@@ -124,11 +143,23 @@ assertions=$((assertions + 3))
 
 # an incomplete previous transcript is preserved and reported
 printf '=== dots update: earlier ===\ndied here\n' >"$HOME/.local/state/dots/update.log"
-out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" DOTS_UPDATE_LOCK_DIR="$SANDBOX/e2e2.lock" \
-  "$ROOT/bin/dots-update")
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update")
 assert_contains "$out" "did not finish cleanly" "incomplete previous run reported"
 [[ -f "$HOME/.local/state/dots/update.log.prev" ]] || fail "previous transcript not preserved"
 grep -q "died here" "$HOME/.local/state/dots/update.log.prev" || fail "preserved transcript lost content"
 assertions=$((assertions + 2))
+
+# a deliberate guard abort marks its transcript and is not misreported as a
+# crash by the run after it
+rc=0
+PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" DOTS_UPDATE_MIN_FREE_KB=9999999999999 \
+  "$ROOT/bin/dots-update" >/dev/null 2>&1 || rc=$?
+((rc == 1)) || fail "guard abort should exit 1 (got $rc)"
+grep -q "Update aborted." "$HOME/.local/state/dots/update.log" || fail "abort end marker missing from transcript"
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update")
+case "$out" in
+  *"did not finish cleanly"*) fail "deliberate abort misreported as a crash" ;;
+esac
+assertions=$((assertions + 3))
 
 echo "ok: $assertions assertions passed (update)"

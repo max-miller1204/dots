@@ -31,11 +31,14 @@ if ! upstream=$(git -C "$DOTS_PATH" rev-parse --abbrev-ref --symbolic-full-name 
   exit 2
 fi
 
-behind=$(git -C "$DOTS_PATH" rev-list --count "HEAD..$upstream")
+if ! behind=$(git -C "$DOTS_PATH" rev-list --count "HEAD..$upstream" 2>/dev/null); then
+  echo "Cannot determine update status." >&2
+  exit 2
+fi
 
 if ((behind > 0)); then
   echo "dots updates available ($behind commits):"
-  git -C "$DOTS_PATH" log --oneline "HEAD..$upstream"
+  git -C "$DOTS_PATH" --no-pager log --oneline "HEAD..$upstream"
   exit 0
 else
   echo "dots is up to date."

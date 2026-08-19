@@ -28,6 +28,7 @@ while (($#)); do
   esac
 done
 
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
 STATE_DIR="${DOTS_MIGRATION_STATE:-$HOME/.local/state/dots/migrations}"
 MIGRATIONS_DIR="$DOTS_PATH/migrations"
@@ -78,3 +79,8 @@ while IFS=$'\t' read -r name file marker; do
     touch "$marker"
   fi
 done < <(migration_entries)
+
+# Migrations may leave restart-*-required markers; report them here too so a
+# standalone `dots migrate` surfaces them instead of leaving them for the
+# next `dots update`.
+"$SELF_DIR/dots-update-restart"

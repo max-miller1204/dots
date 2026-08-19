@@ -13,7 +13,17 @@ set -o pipefail
 
 min_free_kb=${DOTS_UPDATE_MIN_FREE_KB:-1048576}
 
-avail_kb=$(df -Pk "$HOME" 2>/dev/null | awk 'NR == 2 { print $4 }')
+# Fail closed on a malformed threshold — a unit suffix like "1G" would
+# otherwise error out of (( )) and silently disable the guard.
+if [[ ! $min_free_kb =~ ^[0-9]+$ ]]; then
+  echo "Invalid DOTS_UPDATE_MIN_FREE_KB: '$min_free_kb' (whole KiB required)." >&2
+  exit 1
+fi
+
+# Count from the end: the filesystem source name can contain spaces
+# (macOS's 'map auto_home'), which shifts positional fields but leaves
+# Available at NF-2.
+avail_kb=$(df -Pk "$HOME" 2>/dev/null | awk 'NR == 2 { print $(NF - 2) }')
 [[ $avail_kb =~ ^[0-9]+$ ]] || exit 0
 
 if ((avail_kb < min_free_kb)); then

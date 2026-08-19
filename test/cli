@@ -28,6 +28,11 @@ assert_contains "$out" "update" "root listing shows update group"
 out=$("$ROOT/bin/dots" theme)
 assert_contains "$out" "theme-set" "group listing shows theme-set"
 
+# Router: `dots help <group>` lists a group whose name is itself a binary,
+# without running it
+out=$("$ROOT/bin/dots" help update)
+assert_contains "$out" "update-available" "help <group> lists subcommands"
+
 # Router: hidden commands stay hidden
 out=$("$ROOT/bin/dots")
 case "$out" in

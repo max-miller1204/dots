@@ -4,9 +4,13 @@
 # dots:args=<command> [args...]
 # dots:hidden=true
 #
-# mkdir-based rather than omarchy's flock(1), which macOS doesn't ship;
-# mkdir is atomic on both userlands. A lock whose recorded PID is no longer
-# alive is treated as stale and reclaimed.
+# The lock is a symlink whose target is the holder's PID: creation is atomic
+# on both userlands (macOS has no flock(1)) and ownership travels with the
+# lock itself, so there is no window where the lock exists without a
+# recorded holder. A dead holder's lock is claimed by atomically renaming it
+# aside — only one contender's rename can succeed — never by deleting a lock
+# in place. The path deliberately avoids TMPDIR, which differs between GUI
+# and cron/ssh contexts on macOS and would split the lock across them.
 
 set -eo pipefail
 
@@ -15,27 +19,59 @@ if (($# < 1)); then
   exit 1
 fi
 
-LOCK_DIR="${DOTS_UPDATE_LOCK_DIR:-${TMPDIR:-/tmp}/dots-update-$(id -u).lock}"
+LOCK="${DOTS_UPDATE_LOCK:-$HOME/.local/state/dots/update.lock}"
+mkdir -p "$(dirname "$LOCK")"
 
 acquire() {
-  mkdir "$LOCK_DIR" 2>/dev/null
+  ln -s "$$" "$LOCK" 2>/dev/null
+}
+
+refuse() {
+  echo "Another dots update is already running (pid $1)." >&2
+  exit 1
 }
 
 if ! acquire; then
-  holder=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
+  holder=$(readlink "$LOCK" 2>/dev/null || true)
   if [[ -n $holder ]] && kill -0 "$holder" 2>/dev/null; then
-    echo "Another dots update is already running (pid $holder)." >&2
-    exit 1
+    refuse "$holder"
   fi
-  rm -rf "$LOCK_DIR"
+  # Stale: claim it by renaming it aside before removing — the rename is
+  # atomic, so a racing contender cannot also claim (or delete) it.
+  if mv "$LOCK" "$LOCK.stale.$$" 2>/dev/null; then
+    rm -f "$LOCK.stale.$$"
+  fi
   if ! acquire; then
-    echo "Could not acquire the update lock at $LOCK_DIR." >&2
-    exit 1
+    holder=$(readlink "$LOCK" 2>/dev/null || true)
+    refuse "${holder:-unknown}"
   fi
 fi
 
-echo $$ >"$LOCK_DIR/pid"
-trap 'rm -rf "$LOCK_DIR"' EXIT
+# Only ever remove a lock we still own — never a successor's.
+cleanup() {
+  if [[ $(readlink "$LOCK" 2>/dev/null) == "$$" ]]; then
+    rm -f "$LOCK"
+  fi
+}
+trap cleanup EXIT
 
-"$@" && rc=0 || rc=$?
+export DOTS_UPDATE_LOCK_PID=$$
+
+# Run the child in the background so INT/TERM can be forwarded to it; the
+# lock is released only after the child has actually exited, so killing the
+# wrapper cannot leave an orphaned update running unlocked.
+"$@" &
+child=$!
+trap 'kill -TERM "$child" 2>/dev/null' TERM
+trap 'kill -INT "$child" 2>/dev/null' INT
+
+rc=0
+while :; do
+  if wait "$child"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  kill -0 "$child" 2>/dev/null || break
+done
 exit "$rc"

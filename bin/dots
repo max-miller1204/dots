@@ -66,7 +66,7 @@ list_groups() {
   done
 
   echo
-  echo "Run 'dots <group>' to list its commands."
+  echo "Run 'dots help <group>' to list its commands."
 }
 
 list_group() { # list_group <group>
@@ -93,8 +93,19 @@ main() {
     exit 0
   fi
 
+  # `dots help <group>` is the safe discovery path: greedy routing means a
+  # bare `dots update` RUNS the update, so the group listing must be
+  # reachable without executing anything.
   case "$1" in
     -h | --help | help)
+      if [[ -n ${2:-} ]]; then
+        if [[ -n ${GROUP_DESCRIPTIONS[$2]:-} ]]; then
+          list_group "$2"
+          exit 0
+        fi
+        echo "dots: unknown group: $2" >&2
+        exit 1
+      fi
       list_groups
       exit 0
       ;;
