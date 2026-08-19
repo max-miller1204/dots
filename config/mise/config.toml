@@ -1,0 +1,6 @@
+# Global mise configuration (adopted from ~/.config/mise/config.toml).
+# Pin global tool versions here, e.g.:
+#
+# [tools]
+# node = "lts"
+# python = "3.13"

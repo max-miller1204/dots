@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# dots:summary=Update dotfiles: pull the repo, sync packages, run migrations and hooks
+
+set -eo pipefail
+
+DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+
+if [[ ! -d $DOTS_PATH ]]; then
+  echo "No dotfiles checkout at $DOTS_PATH" >&2
+  exit 1
+fi
+
+# 1. Fast-forward the checkout, but never touch local work in progress.
+if git -C "$DOTS_PATH" rev-parse --git-dir >/dev/null 2>&1; then
+  if git -C "$DOTS_PATH" diff --quiet && git -C "$DOTS_PATH" diff --cached --quiet; then
+    if git -C "$DOTS_PATH" remote get-url origin >/dev/null 2>&1; then
+      echo "Updating dotfiles checkout..."
+      git -C "$DOTS_PATH" pull --ff-only || echo "Could not fast-forward; resolve manually."
+    else
+      echo "No git remote configured; skipping pull."
+    fi
+  else
+    echo "Checkout has local changes; skipping pull."
+  fi
+fi
+
+# 2. Packages
+if command -v brew >/dev/null 2>&1; then
+  echo "Syncing Homebrew packages..."
+  brew bundle --file="$DOTS_PATH/install/packages/Brewfile" || true
+fi
+if command -v mise >/dev/null 2>&1; then
+  echo "Updating mise-managed tools..."
+  mise upgrade || true
+fi
+
+# 3. Migrations, then the post-update hook — same order as omarchy update.
+"$DOTS_PATH/bin/dots-migrate"
+"$DOTS_PATH/bin/dots-hook" post-update
+
+echo "Update complete."

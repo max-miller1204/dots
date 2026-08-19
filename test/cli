@@ -1,0 +1,129 @@
+#!/bin/bash
+
+# CLI test suite: router listing/routing, config refresh, theme rendering,
+# migrations. Runs against a sandbox $HOME so the real one is never touched.
+
+set -eo pipefail
+
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+
+assertions=0
+
+fail() {
+  echo "FAIL: $*" >&2
+  exit 1
+}
+
+assert_contains() { # assert_contains <haystack> <needle> <label>
+  case "$1" in
+    *"$2"*) assertions=$((assertions + 1)) ;;
+    *) fail "$3: expected to find '$2' in output:
+$1" ;;
+  esac
+}
+
+# Syntax-check every script
+for f in "$ROOT"/bin/*; do
+  bash -n "$f" || fail "syntax error in $f"
+done
+while IFS= read -r f; do
+  bash -n "$f" || fail "syntax error in $f"
+done < <(find "$ROOT/install" "$ROOT/test" -type f \( -name '*.sh' -o -name 'cli' -o -name 'all' \))
+assertions=$((assertions + 1))
+
+# Sandbox environment
+SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/dots-test.XXXXXX")
+trap 'rm -rf "$SANDBOX"' EXIT
+export HOME="$SANDBOX"
+export DOTS_PATH="$ROOT"
+export PATH="$ROOT/bin:$PATH"
+
+# Router: group listing
+out=$("$ROOT/bin/dots")
+assert_contains "$out" "theme" "root listing shows theme group"
+assert_contains "$out" "update" "root listing shows update group"
+
+# Router: group command listing
+out=$("$ROOT/bin/dots" theme)
+assert_contains "$out" "theme-set" "group listing shows theme-set"
+
+# Router: hidden commands stay hidden
+out=$("$ROOT/bin/dots")
+case "$out" in
+  *done*) fail "hidden 'done' group leaked into root listing" ;;
+esac
+assertions=$((assertions + 1))
+
+# Router: greedy routing to two-segment command
+out=$("$ROOT/bin/dots" version)
+assert_contains "$out" "dots " "dots version routes"
+
+# Router: unknown command errors
+if "$ROOT/bin/dots" no-such-thing >/dev/null 2>&1; then
+  fail "unknown command should exit non-zero"
+fi
+assertions=$((assertions + 1))
+
+# refresh-config: seeds a file, then backs up a modified copy
+"$ROOT/bin/dots" refresh config git/config
+[[ -f "$HOME/.config/git/config" ]] || fail "refresh config did not seed git/config"
+echo "# local edit" >>"$HOME/.config/git/config"
+"$ROOT/bin/dots" refresh config git/config >/dev/null
+[[ -f "$HOME/.config/git/config" ]] || fail "refresh config lost git/config"
+ls "$HOME/.config/git/config.bak."* >/dev/null 2>&1 || fail "refresh config kept no backup"
+cmp -s "$HOME/.config/git/config" "$ROOT/config/git/config" || fail "refresh config did not restore default"
+assertions=$((assertions + 1))
+
+# refresh-config: rejects traversal
+if "$ROOT/bin/dots" refresh config "../evil" >/dev/null 2>&1; then
+  fail "refresh config accepted a traversal path"
+fi
+assertions=$((assertions + 1))
+
+# Theme flow: set, render, record
+"$ROOT/bin/dots" theme set tokyo-night >/dev/null
+theme_dir="$HOME/.local/state/dots/current/theme"
+[[ -f "$theme_dir/btop.theme" ]] || fail "theme set did not render btop.theme"
+grep -q '1a1b26' "$theme_dir/btop.theme" || fail "btop.theme missing tokyo-night background"
+grep -q 'selection-background = #292e42' "$theme_dir/ghostty.conf" || fail "derived selection_background not rendered"
+grep -q '122,162,247' "$theme_dir/colors.sh" || fail "rgb placeholder not rendered"
+[[ $(cat "$HOME/.local/state/dots/current/theme.name") == "tokyo-night" ]] || fail "theme.name not recorded"
+assertions=$((assertions + 5))
+
+# Theme flow: current + list marker
+out=$("$ROOT/bin/dots" theme current)
+assert_contains "$out" "tokyo-night" "theme current reports active theme"
+out=$("$ROOT/bin/dots" theme list)
+assert_contains "$out" "tokyo-night (current)" "theme list marks current"
+assert_contains "$out" "catppuccin" "theme list shows other themes"
+
+# Theme flow: unknown theme errors
+if "$ROOT/bin/dots" theme set no-such-theme >/dev/null 2>&1; then
+  fail "unknown theme should exit non-zero"
+fi
+assertions=$((assertions + 1))
+
+# Migrations: pending detection and run-once markers
+export DOTS_MIGRATION_STATE="$HOME/.local/state/dots/migrations"
+mkdir -p "$SANDBOX/repo/migrations"
+echo 'echo "migration ran" > "$HOME/migration-proof"' >"$SANDBOX/repo/migrations/1700000000.sh"
+
+out=$(DOTS_PATH="$SANDBOX/repo" "$ROOT/bin/dots-migrate" --pending)
+assert_contains "$out" "1700000000.sh" "pending migration listed"
+DOTS_PATH="$SANDBOX/repo" "$ROOT/bin/dots-migrate" >/dev/null
+[[ -f "$HOME/migration-proof" ]] || fail "migration did not run"
+[[ -f "$DOTS_MIGRATION_STATE/1700000000.sh" ]] || fail "migration marker not written"
+if DOTS_PATH="$SANDBOX/repo" "$ROOT/bin/dots-migrate" --pending >/dev/null; then
+  fail "migration still pending after run"
+fi
+assertions=$((assertions + 3))
+
+# done markers
+"$ROOT/bin/dots-done" mark test-marker
+"$ROOT/bin/dots-done" check test-marker || fail "done marker not recorded"
+if "$ROOT/bin/dots-done" ensure test-marker 2>/dev/null; then
+  fail "ensure should fail on an existing marker"
+fi
+assertions=$((assertions + 2))
+
+echo "ok: $assertions assertions passed"

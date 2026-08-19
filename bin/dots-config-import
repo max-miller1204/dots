@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# dots:summary=Adopt a file from ~/.config into the repo's config/ tree
+# dots:args=<config-path>
+# dots:examples=dots config import mise/config.toml
+
+set -eo pipefail
+
+DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+
+config_file=${1:-}
+
+if [[ -z $config_file ]]; then
+  echo "Usage: dots-config-import <path-relative-to-~/.config>" >&2
+  exit 1
+fi
+
+if [[ $config_file == /* || $config_file == *..* ]]; then
+  echo "Config path must be relative, without '..': $config_file" >&2
+  exit 1
+fi
+
+src="$HOME/.config/$config_file"
+dest="$DOTS_PATH/config/$config_file"
+
+if [[ ! -f $src ]]; then
+  echo "No such file: $src" >&2
+  exit 1
+fi
+
+mkdir -p "$(dirname "$dest")"
+cp "$src" "$dest"
+
+echo "Imported ~/.config/$config_file into $DOTS_PATH/config/$config_file"
+echo "Review and commit it: git -C \"$DOTS_PATH\" add \"config/$config_file\""

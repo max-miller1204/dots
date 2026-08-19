@@ -1,0 +1,126 @@
+#!/bin/bash
+
+# The dots command router, modeled on omarchy's bin/omarchy.
+#
+# Routing: `dots theme set tokyo-night` greedily resolves to the longest
+# matching binary (dots-theme-set) and passes the rest as arguments.
+# `dots <group>` with no matching binary lists that group's commands.
+#
+# NOTE: written for macOS /bin/bash 3.2 — no associative arrays here, unlike
+# omarchy's router. GROUP_DESCRIPTIONS lives in group_description() instead.
+
+set -o pipefail
+
+DOTS_BIN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+METADATA_SCAN_LIMIT=20
+
+# The authoritative list of user-facing command groups. A group whose commands
+# are all `# dots:hidden=true` gets no entry and is omitted from the listing.
+group_description() {
+  case "$1" in
+    config) echo "Configuration helpers" ;;
+    hook) echo "User hook runner" ;;
+    install) echo "First-time setup" ;;
+    migrate) echo "Migration runner" ;;
+    pkg) echo "Package management helpers (Homebrew)" ;;
+    refresh) echo "Reset a config file to the repo default" ;;
+    reinstall) echo "Reinstall and reset workflows" ;;
+    theme) echo "Theme management" ;;
+    update) echo "Dotfiles and system updates" ;;
+    version) echo "Version information" ;;
+    *) return 1 ;;
+  esac
+}
+
+metadata() { # metadata <file> <key>
+  head -n "$METADATA_SCAN_LIMIT" "$1" | sed -n "s/^# dots:$2=//p" | head -1
+}
+
+command_group() { # command_group <basename>  (dots-theme-set -> theme)
+  local rest=${1#dots-}
+  echo "${rest%%-*}"
+}
+
+list_groups() {
+  local file base group description
+  local seen=""
+
+  echo "dots — personal dotfiles, the omarchy way"
+  echo
+  echo "Usage: dots <group> [command] [args...]"
+  echo
+  echo "Groups:"
+
+  for file in "$DOTS_BIN_DIR"/dots-*; do
+    [[ -f $file && -x $file ]] || continue
+    [[ $(metadata "$file" hidden) == "true" ]] && continue
+    base=${file##*/}
+    group=$(command_group "$base")
+    case " $seen " in *" $group "*) continue ;; esac
+    seen="$seen $group"
+    if description=$(group_description "$group"); then
+      printf '  %-12s %s\n' "$group" "$description"
+    fi
+  done
+
+  echo
+  echo "Run 'dots <group>' to list its commands."
+}
+
+list_group() { # list_group <group>
+  local group=$1 file base summary found=0
+
+  echo "dots $group commands:"
+  for file in "$DOTS_BIN_DIR/dots-$group" "$DOTS_BIN_DIR/dots-$group"-*; do
+    [[ -f $file && -x $file ]] || continue
+    [[ $(metadata "$file" hidden) == "true" ]] && continue
+    base=${file##*/}
+    summary=$(metadata "$file" summary)
+    printf '  %-24s %s\n' "${base#dots-}" "$summary"
+    found=1
+  done
+
+  if (( found == 0 )); then
+    echo "  (no visible commands)"
+  fi
+}
+
+main() {
+  if (( $# == 0 )); then
+    list_groups
+    exit 0
+  fi
+
+  case "$1" in
+    -h | --help | help)
+      list_groups
+      exit 0
+      ;;
+  esac
+
+  # Greedy longest-match routing.
+  local candidate="dots" best="" best_argc=0 i=0 arg
+  for arg in "$@"; do
+    i=$((i + 1))
+    candidate="$candidate-$arg"
+    if [[ -f "$DOTS_BIN_DIR/$candidate" && -x "$DOTS_BIN_DIR/$candidate" ]]; then
+      best=$candidate
+      best_argc=$i
+    fi
+  done
+
+  if [[ -n $best ]]; then
+    exec "$DOTS_BIN_DIR/$best" "${@:$((best_argc + 1))}"
+  fi
+
+  if group_description "$1" >/dev/null; then
+    list_group "$1"
+    exit 0
+  fi
+
+  echo "dots: unknown command: $*" >&2
+  echo "Run 'dots' to list available groups." >&2
+  exit 1
+}
+
+main "$@"

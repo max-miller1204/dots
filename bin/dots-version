@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# dots:summary=Show the dots version and checkout revision
+
+DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+
+version="unknown"
+[[ -f "$DOTS_PATH/version" ]] && version=$(<"$DOTS_PATH/version")
+
+revision=""
+if git -C "$DOTS_PATH" rev-parse --short HEAD >/dev/null 2>&1; then
+  revision=" ($(git -C "$DOTS_PATH" rev-parse --short HEAD))"
+fi
+
+echo "dots ${version}${revision}"

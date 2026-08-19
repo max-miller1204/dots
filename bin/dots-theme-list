@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# dots:summary=List available themes
+# dots:examples=dots theme list
+
+DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+
+current=""
+[[ -f "$HOME/.local/state/dots/current/theme.name" ]] &&
+  current=$(<"$HOME/.local/state/dots/current/theme.name")
+
+{
+  for dir in "$DOTS_PATH/themes"/*/ "$HOME/.config/dots/themes"/*/; do
+    [[ -d $dir ]] || continue
+    basename "$dir"
+  done
+} | sort -u | while IFS= read -r name; do
+  if [[ $name == "$current" ]]; then
+    echo "$name (current)"
+  else
+    echo "$name"
+  fi
+done

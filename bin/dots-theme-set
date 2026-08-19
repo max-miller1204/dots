@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# dots:summary=Apply a theme
+# dots:args=<theme-name>
+# dots:examples=dots theme list | dots theme set tokyo-night
+
+set -eo pipefail
+
+DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+
+if [[ -z ${1:-} ]]; then
+  echo "Usage: dots-theme-set <theme-name>"
+  exit 1
+fi
+
+THEME_NAME=$(echo "$1" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+
+STATE_DIR="$HOME/.local/state/dots/current"
+CURRENT_THEME_PATH="$STATE_DIR/theme"
+NEXT_THEME_PATH="$STATE_DIR/next-theme"
+USER_THEMES_PATH="$HOME/.config/dots/themes"
+DOTS_THEMES_PATH="$DOTS_PATH/themes"
+
+theme_dir="$DOTS_THEMES_PATH/$THEME_NAME"
+user_theme_dir="$USER_THEMES_PATH/$THEME_NAME"
+
+if [[ ! -d $theme_dir && ! -d $user_theme_dir ]]; then
+  echo "Unknown theme: $THEME_NAME" >&2
+  echo "Available themes:" >&2
+  "$DOTS_PATH/bin/dots-theme-list" >&2
+  exit 1
+fi
+
+# Build a clean staging directory, then swap it in atomically — the omarchy
+# theme activation flow: copy first-party theme, overlay user theme files,
+# render templates, move into place.
+rm -rf "$NEXT_THEME_PATH"
+mkdir -p "$NEXT_THEME_PATH"
+
+[[ -d $theme_dir ]] && cp -R "$theme_dir/." "$NEXT_THEME_PATH/"
+[[ -d $user_theme_dir ]] && cp -R "$user_theme_dir/." "$NEXT_THEME_PATH/"
+
+"$DOTS_PATH/bin/dots-theme-set-templates" "$NEXT_THEME_PATH"
+
+rm -rf "$CURRENT_THEME_PATH"
+mv "$NEXT_THEME_PATH" "$CURRENT_THEME_PATH"
+printf '%s\n' "$THEME_NAME" >"$STATE_DIR/theme.name"
+
+"$DOTS_PATH/bin/dots-hook" theme-set "$THEME_NAME"
+
+echo "Theme set to $THEME_NAME."
+echo "Generated files live in $CURRENT_THEME_PATH — point your apps' configs there."

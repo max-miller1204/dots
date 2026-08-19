@@ -1,0 +1,72 @@
+#!/bin/bash
+
+# dots:summary=First-time install: packages, configs, shell integration, theme
+#
+# Safe to re-run: config seeding backs up files it replaces, and one-time
+# steps are guarded by done markers.
+
+set -eo pipefail
+
+DOTS_PATH=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+export DOTS_PATH
+export PATH="$DOTS_PATH/bin:$PATH"
+
+mkdir -p "$HOME/.local/state/dots"
+source "$DOTS_PATH/install/helpers/logging.sh"
+
+echo "Installing dots from $DOTS_PATH"
+
+# Non-default checkout locations are recorded so the env bootstrap and every
+# later shell can find the repo (omarchy's /etc/omarchy.conf mechanism).
+if [[ $DOTS_PATH != "$HOME/dotfiles" ]]; then
+  mkdir -p "$HOME/.config/dots"
+  printf 'DOTS_PATH="%s"\n' "$DOTS_PATH" >"$HOME/.config/dots/dots.conf"
+  echo "Recorded non-default checkout location in ~/.config/dots/dots.conf"
+fi
+
+# 1. Packages
+source "$DOTS_PATH/install/packages.sh"
+
+# 2. Seed configs: config/** -> ~/.config/**, backing up anything replaced
+echo "Seeding configs into ~/.config..."
+(
+  cd "$DOTS_PATH/config"
+  find . -type f ! -name '.DS_Store' | while IFS= read -r file; do
+    dots-refresh-config "${file#./}"
+  done
+)
+
+# 3. Shell integration: seed rc files, backing up differing versions
+seed_home_file() { # seed_home_file <repo-file> <home-file>
+  local src="$DOTS_PATH/$1" dest="$HOME/$2" backup
+  backup="$dest.bak.$(date +%s)"
+
+  if [[ -f $dest ]] && ! cmp -s "$src" "$dest"; then
+    cp -f "$dest" "$backup"
+    echo "Replaced $dest (backup at $backup)"
+  fi
+  cp -f "$src" "$dest"
+}
+
+seed_home_file default/bashrc .bashrc
+seed_home_file default/zshrc .zshrc
+
+# 4. System-side and user-side setup
+source "$DOTS_PATH/install/config/all.sh"
+source "$DOTS_PATH/install/user/all.sh"
+
+# 5. On first install, mark all shipped migrations as applied — a fresh
+# install already reflects them (omarchy does the same for new users).
+if ! dots-done check install; then
+  mkdir -p "$HOME/.local/state/dots/migrations"
+  for migration in "$DOTS_PATH"/migrations/*.sh; do
+    [[ -f $migration ]] || continue
+    touch "$HOME/.local/state/dots/migrations/$(basename "$migration")"
+  done
+fi
+
+dots-hook post-install
+dots-done mark install
+
+echo
+echo "Done. Restart your shell (or run: source ~/.bashrc), then try: dots"

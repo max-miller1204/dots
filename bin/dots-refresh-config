@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# dots:summary=Copy a shipped config from $DOTS_PATH/config into ~/.config (backs up your version)
+# dots:args=<config-path>
+# dots:examples=dots refresh config git/config
+
+DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+
+config_file=${1:-}
+
+if [[ -z $config_file ]]; then
+  cat <<USAGE
+  Usage: $0 [config_file]
+
+  Must provide a file path relative to .config to be refreshed.
+  To copy $DOTS_PATH/config/git/config to ~/.config/git/config:
+
+    $0 git/config
+USAGE
+  exit 1
+fi
+
+# Unlike omarchy, reject traversal outright instead of documenting the hazard.
+if [[ $config_file == /* || $config_file == *..* ]]; then
+  echo "Config path must be relative, without '..': $config_file" >&2
+  exit 1
+fi
+
+user_config_file="${HOME}/.config/$config_file"
+default_config_file="$DOTS_PATH/config/$config_file"
+backup_config_file="$user_config_file.bak.$(date +%s)"
+
+if [[ ! -e $default_config_file ]]; then
+  echo "Not a shipped config: $config_file" >&2
+  exit 1
+fi
+
+mkdir -p "$(dirname "$user_config_file")"
+
+if [[ -f $user_config_file ]]; then
+  cp -f "$user_config_file" "$backup_config_file"
+  cp -f "$default_config_file" "$user_config_file"
+
+  if cmp -s "$user_config_file" "$backup_config_file"; then
+    rm "$backup_config_file"
+  else
+    echo -e "\033[31mReplaced $user_config_file with the shipped default.\nSaved backup as ${backup_config_file}.\n\n\033[32mChanges:\033[0m"
+    diff "$user_config_file" "$backup_config_file" || true
+  fi
+else
+  cp -f "$default_config_file" "$user_config_file"
+fi

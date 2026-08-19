@@ -1,0 +1,32 @@
+# Single source of truth for DOTS_PATH + PATH adjustments. Sourced by:
+#   ~/.bashrc   (interactive bash)
+#   ~/.zshrc    (interactive zsh)
+#
+# ~/.config/dots/dots.conf is written by dots-install when the checkout lives
+# somewhere other than ~/dotfiles. When absent, force the default instead of
+# preserving a stale inherited value.
+if [ -f "$HOME/.config/dots/dots.conf" ]; then
+  . "$HOME/.config/dots/dots.conf"
+  : "${DOTS_PATH:=$HOME/dotfiles}"
+else
+  DOTS_PATH="$HOME/dotfiles"
+fi
+export DOTS_PATH
+
+# Unlike omarchy (whose binaries ship to /usr/bin via a package), the checkout
+# is the install here, so bin/ is always prepended.
+case ":$PATH:" in
+  *":${DOTS_PATH%/}/bin:"*) ;;
+  *) PATH="${DOTS_PATH%/}/bin${PATH:+:$PATH}" ;;
+esac
+
+# User-level tool paths, appended so system binaries keep precedence.
+case ":$PATH:" in
+  *":$HOME/.local/share/mise/shims:"*) ;;
+  *) PATH="${PATH:+$PATH:}$HOME/.local/share/mise/shims" ;;
+esac
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *) PATH="${PATH:+$PATH:}$HOME/.local/bin" ;;
+esac
+export PATH

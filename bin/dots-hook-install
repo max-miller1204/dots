@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# dots:summary=Install a script as a hook for an event
+# dots:args=<event> <script-path>
+# dots:examples=dots hook install post-update ~/my-hook
+
+set -e
+
+event=${1:-}
+script=${2:-}
+
+if [[ -z $event || -z $script ]]; then
+  echo "Usage: dots-hook-install <event> <script-path>" >&2
+  exit 1
+fi
+
+if [[ ! -f $script ]]; then
+  echo "No such file: $script" >&2
+  exit 1
+fi
+
+hook_dir="$HOME/.config/dots/hooks/$event.d"
+mkdir -p "$hook_dir"
+cp "$script" "$hook_dir/"
+chmod +x "$hook_dir/$(basename "$script")"
+echo "Installed hook: $hook_dir/$(basename "$script")"

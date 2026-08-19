@@ -1,0 +1,4 @@
+# Example post-update hook. Drop the .sample suffix to activate.
+# Runs at the end of `dots update`, after packages and migrations.
+
+echo "post-update hook ran at $(date)"

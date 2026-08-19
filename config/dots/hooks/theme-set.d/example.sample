@@ -1,0 +1,4 @@
+# Example theme-set hook. Drop the .sample suffix to activate.
+# Runs after `dots theme set`; the theme name arrives in $1.
+
+echo "Theme changed to: $1"

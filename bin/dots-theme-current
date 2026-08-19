@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# dots:summary=Show the active theme name
+
+name_file="$HOME/.local/state/dots/current/theme.name"
+
+if [[ -f $name_file ]]; then
+  cat "$name_file"
+else
+  echo "No theme set. Run: dots theme set tokyo-night" >&2
+  exit 1
+fi

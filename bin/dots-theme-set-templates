@@ -1,0 +1,93 @@
+#!/bin/bash
+
+# dots:summary=Render themed templates into a staged theme directory
+# dots:args=<staged-theme-dir>
+# dots:hidden=true
+#
+# Renders default/themed/*.tpl (and user templates from ~/.config/dots/themed/)
+# into the staged theme using values from its colors.toml. Supported
+# placeholders, per key in colors.toml:
+#
+#   {{ key }}        -> #7aa2f7
+#   {{ key_strip }}  -> 7aa2f7
+#   {{ key_rgb }}    -> 122,162,247
+#
+# Derived keys (as in omarchy): selection_background = selection,
+# selection_foreground = bright_foreground, unless the theme defines them.
+# Omarchy's mix/gradient helpers are not implemented.
+#
+# Rendering only happens when the staged theme has colors.toml. Existing files
+# are never overwritten, so a hand-written themes/<name>/btop.theme wins over
+# default/themed/btop.theme.tpl. User templates are processed before built-ins,
+# so a user template with the same output filename shadows the built-in.
+
+set -eo pipefail
+
+DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+
+staging=${1:?Usage: dots-theme-set-templates <staged-theme-dir>}
+colors_file="$staging/colors.toml"
+
+[[ -f $colors_file ]] || exit 0
+
+sedfile=$(mktemp "${TMPDIR:-/tmp}/dots-theme-rules.XXXXXX")
+trap 'rm -f "$sedfile"' EXIT
+
+emit_rules() { # emit_rules <key> <value>
+  local key=$1 val=$2 r g b
+
+  printf 's|{{ *%s_strip *}}|%s|g\n' "$key" "${val#\#}"
+
+  if [[ $val =~ ^#([0-9a-fA-F][0-9a-fA-F])([0-9a-fA-F][0-9a-fA-F])([0-9a-fA-F][0-9a-fA-F])$ ]]; then
+    r=$((16#${BASH_REMATCH[1]}))
+    g=$((16#${BASH_REMATCH[2]}))
+    b=$((16#${BASH_REMATCH[3]}))
+    printf 's|{{ *%s_rgb *}}|%s,%s,%s|g\n' "$key" "$r" "$g" "$b"
+  fi
+
+  printf 's|{{ *%s *}}|%s|g\n' "$key" "$val"
+}
+
+selection_value=""
+bright_foreground_value=""
+has_selection_background=""
+has_selection_foreground=""
+
+key_re='^[[:space:]]*([A-Za-z0-9_]+)[[:space:]]*=[[:space:]]*"([^"]*)"'
+while IFS= read -r line; do
+  [[ $line =~ $key_re ]] || continue
+  key=${BASH_REMATCH[1]}
+  val=${BASH_REMATCH[2]}
+  emit_rules "$key" "$val" >>"$sedfile"
+
+  case "$key" in
+    selection) selection_value=$val ;;
+    bright_foreground) bright_foreground_value=$val ;;
+    selection_background) has_selection_background=1 ;;
+    selection_foreground) has_selection_foreground=1 ;;
+  esac
+done <"$colors_file"
+
+if [[ -z $has_selection_background && -n $selection_value ]]; then
+  emit_rules selection_background "$selection_value" >>"$sedfile"
+fi
+if [[ -z $has_selection_foreground && -n $bright_foreground_value ]]; then
+  emit_rules selection_foreground "$bright_foreground_value" >>"$sedfile"
+fi
+
+render() { # render <template> — output lands in staging, named without .tpl
+  local tpl=$1 out
+  out="$staging/$(basename "${tpl%.tpl}")"
+  [[ -e $out ]] && return 0
+  sed -f "$sedfile" "$tpl" >"$out"
+}
+
+for tpl in "$HOME/.config/dots/themed"/*.tpl; do
+  [[ -f $tpl ]] && render "$tpl"
+done
+
+for tpl in "$DOTS_PATH/default/themed"/*.tpl; do
+  [[ -f $tpl ]] && render "$tpl"
+done
+
+exit 0

@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# dots:summary=Exit 0 if a command is missing from PATH
+# dots:args=<command>
+# dots:hidden=true
+
+! command -v "${1:?Usage: dots-cmd-missing <command>}" >/dev/null 2>&1
