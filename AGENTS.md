@@ -19,7 +19,7 @@ This repo replicates omarchy's dotfiles architecture on macOS. Read
   bash is uniform now, but the userland is not: avoid flags that differ
   (`sed -i` without a suffix, `date -r`, `ls --color` outside a `uname`
   guard). mise is the only layer for dev tools; Homebrew exists on macOS
-  solely for system-level pieces (bash itself), and only inside
+  solely for system-level pieces (bash, flock), and only inside
   `install/config/macos.sh` — never in shared code.
 - Use `[[ ]]` for string/file tests and `(( ))` for numeric tests
 - In `[[ ]]`, don't quote variables, but do quote string literals when comparing

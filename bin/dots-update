@@ -3,16 +3,28 @@
 # dots:summary=Update dotfiles: pull the repo, sync packages, run migrations and hooks
 #
 # The omarchy update pipeline, ported:
-#   lock -> transcript log -> free-space check -> git pull -> mise sync
-#   -> migrations -> post-update hook -> log analysis -> restart checks
+#   lock -> transcript (script(1) pty) -> free-space check -> git pull
+#   -> mise sync -> migrations -> post-update hook -> log analysis
+#   -> restart checks
+#
+# Three exec stages: acquire the flock'd fd (dots-update-lock), re-exec
+# under script(1) so the run is recorded on a real pty, then run the
+# pipeline (--transcribed marks the innermost stage; it is argv, not env,
+# so it cannot leak into nested invocations from hooks).
 
 set -eo pipefail
 
 SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
 
-# No options exist; swallowing an unknown flag (say, --dry-run) and running a
-# real update anyway would be worse than refusing.
+transcribed=""
+if [[ ${1:-} == "--transcribed" && -n ${DOTS_UPDATE_LOCK_PID:-} ]]; then
+  transcribed=1
+  shift
+fi
+
+# No public options exist; swallowing an unknown flag (say, --dry-run) and
+# running a real update anyway would be worse than refusing.
 if (($#)); then
   echo "dots-update: unknown arguments: $*" >&2
   echo "Usage: dots update" >&2
@@ -24,44 +36,47 @@ if [[ ! -d $DOTS_PATH ]]; then
   exit 1
 fi
 
-# Serialize with any other running update: re-exec under the lock once. The
-# sentinel is the lock wrapper's PID and only honored when that wrapper is
-# our direct parent, so an exported copy reaching hooks, migrations, or
-# their descendants cannot let a nested `dots update` bypass the lock.
-if [[ ${DOTS_UPDATE_LOCK_PID:-} != "$PPID" ]]; then
-  exec "$SELF_DIR/dots-update-lock" "$SELF_DIR/dots-update" "$@"
+STATE_DIR="$HOME/.local/state/dots"
+LOG_FILE="$STATE_DIR/update.log"
+PREV_NOTE_MARKER="$STATE_DIR/update-prev-incomplete"
+
+if [[ -z $transcribed ]]; then
+  # Stage 1: serialize with any other running update. The sentinel is the
+  # lock holder's own PID and honored only by that same process, so an
+  # exported copy reaching hooks, migrations, or their descendants cannot
+  # let a nested `dots update` bypass the lock.
+  if [[ ${DOTS_UPDATE_LOCK_PID:-} != "$$" ]]; then
+    exec "$SELF_DIR/dots-update-lock" "$SELF_DIR/dots-update"
+  fi
+
+  # Stage 2 (locked): rotate a dead run's transcript before script(1)
+  # truncates the log. A previous transcript with neither end marker
+  # ("Update complete." / "Update aborted.") means that run died — preserve
+  # it and leave a note marker for the transcribed stage to report.
+  mkdir -p "$STATE_DIR"
+  if [[ -s $LOG_FILE ]] && ! grep -Eq "Update (complete|aborted)\." "$LOG_FILE"; then
+    mv -f "$LOG_FILE" "$LOG_FILE.prev"
+    touch "$PREV_NOTE_MARKER"
+  fi
+
+  # Re-exec under script(1) for a transcript recorded off a real pty (child
+  # programs keep colors/progress, and the log is complete when script
+  # exits). BSD and util-linux script disagree on flags: BSD takes the
+  # command as trailing args and propagates its exit status by default;
+  # util-linux needs -e for the status and -c with a command string.
+  if command -v script >/dev/null 2>&1; then
+    if [[ $(uname -s) == "Darwin" ]]; then
+      exec script -qF "$LOG_FILE" "$SELF_DIR/dots-update" --transcribed
+    else
+      exec script -qefc "$(printf '%q %q' "$SELF_DIR/dots-update" --transcribed)" "$LOG_FILE"
+    fi
+  fi
+  echo "script(1) not found; running without a transcript."
+  : >"$LOG_FILE"
+  exec "$SELF_DIR/dots-update" --transcribed
 fi
 
-# Transcript: mirror everything into the update log, fresh per run, so
-# dots-update-analyze-logs only ever sees the current transcript. A previous
-# transcript with neither end marker ("Update complete." / "Update aborted.")
-# means that run died — preserve it and say so instead of silently
-# truncating the evidence.
-LOG_FILE="$HOME/.local/state/dots/update.log"
-mkdir -p "$(dirname "$LOG_FILE")"
-
-prev_incomplete=""
-if [[ -s $LOG_FILE ]] && ! grep -Eq "Update (complete|aborted)\." "$LOG_FILE"; then
-  mv -f "$LOG_FILE" "$LOG_FILE.prev"
-  prev_incomplete=1
-fi
-
-: >"$LOG_FILE"
-exec > >(tee -a "$LOG_FILE") 2>&1
-TEE_PID=$!
-
-# Bash does not wait for the tee process substitution on exit, so without a
-# drain the final lines (including the end marker) can miss the log. Bounded
-# poll rather than a bare wait: a hook-started daemon holding the pipe open
-# must not hang the update forever.
-finish_transcript() {
-  exec >&- 2>&-
-  for _ in 1 2 3 4 5 6 7 8 9 10; do
-    kill -0 "$TEE_PID" 2>/dev/null || return 0
-    sleep 0.1
-  done
-}
-trap finish_transcript EXIT
+# Stage 3 (locked + transcribed): the pipeline.
 
 # A deliberate abort still marks the transcript as finished, so the next run
 # doesn't misreport it as a crash.
@@ -71,7 +86,8 @@ abort_update() {
 }
 
 echo "=== dots update: $(date) ==="
-if [[ -n $prev_incomplete ]]; then
+if [[ -f $PREV_NOTE_MARKER ]]; then
+  rm -f "$PREV_NOTE_MARKER"
   echo "Note: the previous update did not finish cleanly (transcript: $LOG_FILE.prev)."
 fi
 
@@ -101,10 +117,12 @@ fi
 
 # 3. Migrations, then the post-update hook — same order as omarchy update.
 # A migration failure must not skip the analyzer and restart report below.
+# Both run with the lock fd (9) closed, so a daemon they start cannot hold
+# the update lock forever.
 migrate_rc=0
-"$SELF_DIR/dots-migrate" || migrate_rc=$?
+"$SELF_DIR/dots-migrate" 9>&- || migrate_rc=$?
 if ((migrate_rc == 0)); then
-  "$SELF_DIR/dots-hook" post-update
+  "$SELF_DIR/dots-hook" post-update 9>&-
 else
   echo "Migrations failed (exit $migrate_rc); skipping the post-update hook."
 fi

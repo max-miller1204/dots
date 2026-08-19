@@ -37,39 +37,44 @@ out=$(DOTS_UPDATE_MIN_FREE_KB=1G "$ROOT/bin/dots-update-requires-free-space" 2>&
 assert_contains "$out" "Invalid DOTS_UPDATE_MIN_FREE_KB" "malformed threshold reported"
 assertions=$((assertions + 1))
 
-# --- lock: runs commands, releases, refuses a held lock, survives signals,
-# reclaims stale
+# --- lock: runs commands, releases, refuses a held lock, and the kernel
+# frees it on any death of the holder (the lock FILE persists by design;
+# release is proven functionally, by re-acquiring)
 export DOTS_UPDATE_LOCK="$SANDBOX/update.lock"
 
 out=$("$ROOT/bin/dots-update-lock" bash -c 'echo inside')
 assert_contains "$out" "inside" "lock runs its command"
-[[ ! -e $DOTS_UPDATE_LOCK ]] || fail "lock not released after the command"
+"$ROOT/bin/dots-update-lock" true || fail "lock not released after the command"
 assertions=$((assertions + 1))
 
 "$ROOT/bin/dots-update-lock" sleep 3 &
 holder_pid=$!
 sleep 0.5
-if "$ROOT/bin/dots-update-lock" true 2>/dev/null; then
+rc=0
+out=$("$ROOT/bin/dots-update-lock" true 2>&1) || rc=$?
+if ((rc == 0)); then
   kill "$holder_pid" 2>/dev/null || true
   fail "second update acquired a held lock"
 fi
+assert_contains "$out" "already running" "held lock refused with message"
 assertions=$((assertions + 1))
 
-# SIGTERM on the wrapper forwards to the child; the lock is cleaned up only
-# once the child is gone, never left behind and never freed early
+# SIGTERM ends the holder (the wrapper exec'd into it, so they are the same
+# process) and the kernel releases the lock with it
 kill -TERM "$holder_pid" 2>/dev/null
 wait "$holder_pid" 2>/dev/null || true
-sleep 0.2
-[[ ! -e $DOTS_UPDATE_LOCK ]] || fail "lock left behind after SIGTERM"
+"$ROOT/bin/dots-update-lock" true || fail "lock not released after SIGTERM"
 assertions=$((assertions + 1))
 
-# a stale lock (dead holder) is reclaimed
-sleep 0 &
-dead_pid=$!
-wait "$dead_pid"
-ln -s "$dead_pid" "$DOTS_UPDATE_LOCK"
-out=$("$ROOT/bin/dots-update-lock" bash -c 'echo reclaimed')
-assert_contains "$out" "reclaimed" "stale lock reclaimed"
+# SIGKILL — the case no userspace cleanup can catch — also releases the
+# lock immediately, with no stale state left to reclaim
+"$ROOT/bin/dots-update-lock" sleep 30 &
+holder_pid=$!
+sleep 0.5
+kill -9 "$holder_pid" 2>/dev/null
+wait "$holder_pid" 2>/dev/null || true
+"$ROOT/bin/dots-update-lock" true || fail "lock not released after SIGKILL"
+assertions=$((assertions + 1))
 
 # --- log analysis
 printf 'all good\nmise ERROR could not fetch\nHook failed: /x/y\n' >"$SANDBOX/bad.log"
@@ -128,6 +133,14 @@ out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$SANDBOX/no-such-checkout" \
   "$ROOT/bin/dots-update" --dry-run 2>&1) || rc=$?
 ((rc == 1)) || fail "dots-update with unknown args should exit 1 (got $rc)"
 assert_contains "$out" "Usage: dots update" "unknown args rejected with usage"
+
+# the internal --transcribed marker is refused without the lock env, so it
+# cannot be used to skip the lock from outside the exec chain
+rc=0
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$SANDBOX/no-such-checkout" \
+  "$ROOT/bin/dots-update" --transcribed 2>&1) || rc=$?
+((rc == 1)) || fail "bare --transcribed should be rejected (got $rc)"
+assert_contains "$out" "unknown arguments" "bare --transcribed treated as unknown"
 
 # --- end-to-end dots-update: stubbed mise, local git upstream, no network
 echo three >"$upstream/file"

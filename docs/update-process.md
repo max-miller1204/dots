@@ -7,9 +7,12 @@ updates go wrong.
 ```text
 dots-update
   ├─ dots-update-lock                  serialize concurrent runs
-  │    (atomic symlink lock carrying the holder pid; signals forward to
-  │     the child so a killed wrapper never frees a live update's lock)
-  ├─ transcript: tee everything to ~/.local/state/dots/update.log
+  │    (flock(1) on an fd the pipeline inherits: the kernel releases the
+  │     lock when the last holder exits, SIGKILL included — util-linux on
+  │     Ubuntu/WSL, discoteq flock via brew on macOS)
+  ├─ transcript: script(1) records the run off a real pty into
+  │    ~/.local/state/dots/update.log (BSD and util-linux flag syntax
+  │    differ, so this is the repo's one sanctioned uname guard)
   ├─ dots-update-requires-free-space   abort below 1 GiB free on $HOME
   │    (DOTS_UPDATE_FORCE=1 bypasses; unknown free space is skipped;
   │     a deliberate abort writes "Update aborted." so the next run
@@ -26,7 +29,8 @@ dots-update
 
 | Path | Purpose |
 | --- | --- |
-| `~/.local/state/dots/update.lock` | Update lock: a symlink targeting the holder's PID (deliberately not under TMPDIR, which differs between GUI and cron/ssh contexts). Stale locks are reclaimed atomically. Override with `DOTS_UPDATE_LOCK`. |
+| `~/.local/state/dots/update.lock` | Update lock file, held via flock(1) on an inherited fd (deliberately not under TMPDIR, which differs between GUI and cron/ssh contexts). The file persists between runs — the kernel, not the file, owns the lock; its content is only a holder-pid breadcrumb for refusal messages. Override with `DOTS_UPDATE_LOCK`. |
+| `~/.local/state/dots/update-prev-incomplete` | One-shot marker from the locked stage to the transcribed stage that the previous transcript was rotated to `.prev`; consumed when the note is printed. |
 | `~/.local/state/dots/update.log` | Transcript of the last `dots update`, read by the analyzer. |
 | `~/.local/state/dots/update.log.prev` | Preserved transcript of a run that died or aborted; the next update reports it instead of silently truncating. |
 | `~/.local/state/dots/restart-<component>-required` | Restart markers, reported and cleared at the end of an update. |
