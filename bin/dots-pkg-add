@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # dots:summary=Install a tool globally with mise
 # dots:args=<tool[@version]...>

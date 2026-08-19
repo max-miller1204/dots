@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # dots:summary=Update dotfiles: pull the repo, sync packages, run migrations and hooks
 

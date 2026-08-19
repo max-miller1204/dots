@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # dots:summary=Run a named hook from ~/.config/dots/hooks/<name> and ~/.config/dots/hooks/<name>.d/
 # dots:args=[name] [args...]

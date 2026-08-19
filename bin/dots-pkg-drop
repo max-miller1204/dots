@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # dots:summary=Remove a tool from the global mise config
 # dots:args=<tool...>

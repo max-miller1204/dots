@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # dots:summary=Run pending dots migrations
 # dots:args=[--pending]

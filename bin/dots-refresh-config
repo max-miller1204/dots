@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # dots:summary=Copy a shipped config from $DOTS_PATH/config into ~/.config (backs up your version)
 # dots:args=<config-path>

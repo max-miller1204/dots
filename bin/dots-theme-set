@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # dots:summary=Apply a theme
 # dots:args=<theme-name>
@@ -13,7 +13,8 @@ if [[ -z ${1:-} ]]; then
   exit 1
 fi
 
-THEME_NAME=$(echo "$1" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+THEME_NAME=${1,,}
+THEME_NAME=${THEME_NAME// /-}
 
 STATE_DIR="$HOME/.local/state/dots/current"
 CURRENT_THEME_PATH="$STATE_DIR/theme"

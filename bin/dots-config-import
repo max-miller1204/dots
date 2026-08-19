@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # dots:summary=Adopt a file from ~/.config into the repo's config/ tree
 # dots:args=<config-path>

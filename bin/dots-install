@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # dots:summary=First-time install: packages, configs, shell integration, theme
 #

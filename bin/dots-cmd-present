@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # dots:summary=Exit 0 if a command exists on PATH
 # dots:args=<command>

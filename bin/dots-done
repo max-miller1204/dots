@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # dots:summary=Check or mark completed dots setup tasks
 # dots:args=<check|mark|ensure> <name>

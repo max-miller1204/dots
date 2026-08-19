@@ -13,6 +13,15 @@ else
 fi
 export DOTS_PATH
 
+# Homebrew (macOS): prepended so `#!/usr/bin/env bash` resolves to brew's
+# modern bash instead of the system 3.2. Guarded, so Linux machines skip it.
+if [ -d /opt/homebrew/bin ]; then
+  case ":$PATH:" in
+    *":/opt/homebrew/bin:"*) ;;
+    *) PATH="/opt/homebrew/bin:/opt/homebrew/sbin${PATH:+:$PATH}" ;;
+  esac
+fi
+
 # Unlike omarchy (whose binaries ship to /usr/bin via a package), the checkout
 # is the install here, so bin/ is always prepended.
 case ":$PATH:" in

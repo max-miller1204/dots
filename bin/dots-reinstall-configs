@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # dots:summary=Reset every config to the shipped defaults (clobbers your copies)
 # dots:args=[--force]

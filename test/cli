@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # CLI test suite: router listing/routing, config refresh, theme rendering,
 # migrations. Runs against a sandbox $HOME so the real one is never touched.

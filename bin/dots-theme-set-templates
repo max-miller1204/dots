@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # dots:summary=Render themed templates into a staged theme directory
 # dots:args=<staged-theme-dir>

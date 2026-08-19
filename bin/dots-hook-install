@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # dots:summary=Install a script as a hook for an event
 # dots:args=<event> <script-path>

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # The dots command router, modeled on omarchy's bin/omarchy.
 #
@@ -6,8 +6,13 @@
 # matching binary (dots-theme-set) and passes the rest as arguments.
 # `dots <group>` with no matching binary lists that group's commands.
 #
-# NOTE: written for macOS /bin/bash 3.2 — no associative arrays here, unlike
-# omarchy's router. GROUP_DESCRIPTIONS lives in group_description() instead.
+# Requires bash >= 4 (Homebrew bash on macOS — the system /bin/bash is 3.2).
+
+if ((BASH_VERSINFO[0] < 4)); then
+  echo "dots requires bash >= 4; this is bash ${BASH_VERSION}." >&2
+  echo "On macOS: brew install bash (and ensure it is first on PATH)." >&2
+  exit 1
+fi
 
 set -o pipefail
 
@@ -16,21 +21,18 @@ METADATA_SCAN_LIMIT=20
 
 # The authoritative list of user-facing command groups. A group whose commands
 # are all `# dots:hidden=true` gets no entry and is omitted from the listing.
-group_description() {
-  case "$1" in
-    config) echo "Configuration helpers" ;;
-    hook) echo "User hook runner" ;;
-    install) echo "First-time setup" ;;
-    migrate) echo "Migration runner" ;;
-    pkg) echo "Package management helpers (mise)" ;;
-    refresh) echo "Reset a config file to the repo default" ;;
-    reinstall) echo "Reinstall and reset workflows" ;;
-    theme) echo "Theme management" ;;
-    update) echo "Dotfiles and system updates" ;;
-    version) echo "Version information" ;;
-    *) return 1 ;;
-  esac
-}
+declare -A GROUP_DESCRIPTIONS
+
+GROUP_DESCRIPTIONS[config]="Configuration helpers"
+GROUP_DESCRIPTIONS[hook]="User hook runner"
+GROUP_DESCRIPTIONS[install]="First-time setup"
+GROUP_DESCRIPTIONS[migrate]="Migration runner"
+GROUP_DESCRIPTIONS[pkg]="Package management helpers (mise)"
+GROUP_DESCRIPTIONS[refresh]="Reset a config file to the repo default"
+GROUP_DESCRIPTIONS[reinstall]="Reinstall and reset workflows"
+GROUP_DESCRIPTIONS[theme]="Theme management"
+GROUP_DESCRIPTIONS[update]="Dotfiles and system updates"
+GROUP_DESCRIPTIONS[version]="Version information"
 
 metadata() { # metadata <file> <key>
   head -n "$METADATA_SCAN_LIMIT" "$1" | sed -n "s/^# dots:$2=//p" | head -1
@@ -42,8 +44,8 @@ command_group() { # command_group <basename>  (dots-theme-set -> theme)
 }
 
 list_groups() {
-  local file base group description
-  local seen=""
+  local file base group
+  local -A seen=()
 
   echo "dots — personal dotfiles, the omarchy way"
   echo
@@ -56,10 +58,10 @@ list_groups() {
     [[ $(metadata "$file" hidden) == "true" ]] && continue
     base=${file##*/}
     group=$(command_group "$base")
-    case " $seen " in *" $group "*) continue ;; esac
-    seen="$seen $group"
-    if description=$(group_description "$group"); then
-      printf '  %-12s %s\n' "$group" "$description"
+    [[ -n ${seen[$group]:-} ]] && continue
+    seen[$group]=1
+    if [[ -n ${GROUP_DESCRIPTIONS[$group]:-} ]]; then
+      printf '  %-12s %s\n' "$group" "${GROUP_DESCRIPTIONS[$group]}"
     fi
   done
 
@@ -80,13 +82,13 @@ list_group() { # list_group <group>
     found=1
   done
 
-  if (( found == 0 )); then
+  if ((found == 0)); then
     echo "  (no visible commands)"
   fi
 }
 
 main() {
-  if (( $# == 0 )); then
+  if (($# == 0)); then
     list_groups
     exit 0
   fi
@@ -113,7 +115,7 @@ main() {
     exec "$DOTS_BIN_DIR/$best" "${@:$((best_argc + 1))}"
   fi
 
-  if group_description "$1" >/dev/null; then
+  if [[ -n ${GROUP_DESCRIPTIONS[$1]:-} ]]; then
     list_group "$1"
     exit 0
   fi

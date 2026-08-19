@@ -6,16 +6,21 @@ This repo replicates omarchy's dotfiles architecture on macOS. Read
 # Style
 
 - Two spaces for indentation, no tabs
-- Shebangs must use `#!/bin/bash` consistently (never `#!/usr/bin/env bash`)
+- Shebangs must use `#!/usr/bin/env bash` consistently (never `#!/bin/bash` —
+  a deliberate deviation from omarchy: macOS pins `/bin/bash` at 3.2, so the
+  modern bash lives at Homebrew's prefix and is found via PATH, which
+  `default/bash/env-bootstrap` guarantees)
+- **Bash >= 4 is assumed; write bash 5 idioms** as omarchy does: `declare -A`,
+  `mapfile`, `${var,,}`, `${var//pat/rep}` are all fine. `bin/dots` guards the
+  version and points at the fix. On macOS, `install/config/macos.sh` installs
+  Homebrew bash and sets it as the login shell.
 - Scripts under `install/` are sourced and intentionally omit shebangs
-- **macOS `/bin/bash` is 3.2** — unlike omarchy's bash 5 rules, do NOT use
-  `declare -A`, `mapfile`, `${var,,}`, `&>>`, or globstar. `[[ ]]`, `(( ))`,
-  `[[ =~ ]]`, and `${@:n}` slicing are fine.
 - **Scripts must run on macOS (BSD userland) and Ubuntu/WSL (GNU userland)** —
-  avoid flags that differ between them (`sed -i` without a suffix, `date -r`,
-  `ls --color` outside a `uname` guard). mise is the only package layer; never
-  reach for brew or apt in shared code (OS-specific leaves under
-  `install/config/` are the place for that).
+  bash is uniform now, but the userland is not: avoid flags that differ
+  (`sed -i` without a suffix, `date -r`, `ls --color` outside a `uname`
+  guard). mise is the only layer for dev tools; Homebrew exists on macOS
+  solely for system-level pieces (bash itself), and only inside
+  `install/config/macos.sh` — never in shared code.
 - Use `[[ ]]` for string/file tests and `(( ))` for numeric tests
 - In `[[ ]]`, don't quote variables, but do quote string literals when comparing
 - For strings/paths with spaces, quote them instead of escaping spaces
