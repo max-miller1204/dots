@@ -9,16 +9,21 @@
 #
 # Three exec stages: acquire the flock'd fd (dots-update-lock), re-exec
 # under script(1) so the run is recorded on a real pty, then run the
-# pipeline (--transcribed marks the innermost stage; it is argv, not env,
-# so it cannot leak into nested invocations from hooks).
+# pipeline (--transcribed marks the innermost stage; it is honored only
+# when the lock sentinel names our direct parent — the script(1) stage —
+# so hooks, migrations, and their descendants cannot re-enter with it).
 
 set -eo pipefail
 
 SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
 
+# The sentinel is the lock holder's PID, which script(1) inherits through
+# the exec chain — so the transcribed stage is exactly the process whose
+# parent carries it. An exported copy reaching hooks or daemons they leave
+# behind cannot equal the caller's own $PPID.
 transcribed=""
-if [[ ${1:-} == "--transcribed" && -n ${DOTS_UPDATE_LOCK_PID:-} ]]; then
+if [[ ${1:-} == "--transcribed" && ${DOTS_UPDATE_LOCK_PID:-} == "$PPID" ]]; then
   transcribed=1
   shift
 fi
@@ -41,11 +46,11 @@ LOG_FILE="$STATE_DIR/update.log"
 PREV_NOTE_MARKER="$STATE_DIR/update-prev-incomplete"
 
 if [[ -z $transcribed ]]; then
-  # Stage 1: serialize with any other running update. The sentinel is the
-  # lock holder's own PID and honored only by that same process, so an
-  # exported copy reaching hooks, migrations, or their descendants cannot
-  # let a nested `dots update` bypass the lock.
-  if [[ ${DOTS_UPDATE_LOCK_PID:-} != "$$" ]]; then
+  # Stage 1: serialize with any other running update. Stage 2 may only run
+  # in the lock wrapper's own exec'd process: the sentinel must equal our
+  # PID and the lock fd must actually be open, so a stale exported
+  # sentinel colliding with a reused PID still goes through the lock.
+  if [[ ${DOTS_UPDATE_LOCK_PID:-} != "$$" ]] || ! { true >&9; } 2>/dev/null; then
     exec "$SELF_DIR/dots-update-lock" "$SELF_DIR/dots-update"
   fi
 
@@ -61,22 +66,47 @@ if [[ -z $transcribed ]]; then
 
   # Re-exec under script(1) for a transcript recorded off a real pty (child
   # programs keep colors/progress, and the log is complete when script
-  # exits). BSD and util-linux script disagree on flags: BSD takes the
-  # command as trailing args and propagates its exit status by default;
-  # util-linux needs -e for the status and -c with a command string.
-  if command -v script >/dev/null 2>&1; then
-    if [[ $(uname -s) == "Darwin" ]]; then
-      exec script -qF "$LOG_FILE" "$SELF_DIR/dots-update" --transcribed
-    else
-      exec script -qefc "$(printf '%q %q' "$SELF_DIR/dots-update" --transcribed)" "$LOG_FILE"
-    fi
+  # exits). script ships in the macOS base system and in Ubuntu's Essential
+  # bsdutils, so a missing one is a broken host, not a mode to degrade
+  # into: running without a transcript would blind crash detection and the
+  # analyzer.
+  if ! command -v script >/dev/null 2>&1; then
+    echo "script(1) not found; it ships with macOS and with bsdutils on Ubuntu/WSL." >&2
+    exit 1
   fi
-  echo "script(1) not found; running without a transcript."
-  : >"$LOG_FILE"
-  exec "$SELF_DIR/dots-update" --transcribed
+
+  # Hand script(1) the caller's tty only for an interactive foreground run
+  # (so git can still prompt); pipes, sockets, closed stdin, and background
+  # jobs get /dev/null — script would drain a pipe into the transcript,
+  # die on a socket, hang on a closed fd, or SIGTTOU-stop the run from a
+  # background process group, all while holding the lock.
+  if [[ ! -t 0 ]] || (($(ps -o tpgid= -p $$) != $(ps -o pgid= -p $$))); then
+    exec </dev/null
+  fi
+
+  # BSD and util-linux script disagree on flags: BSD takes the command as
+  # trailing args and propagates its exit status by default; util-linux
+  # needs -e for the status and -c with a command string, which it hands
+  # to $SHELL — pinned to the running bash so the quoting always parses.
+  if [[ $(uname -s) == "Darwin" ]]; then
+    exec script -qF "$LOG_FILE" "$SELF_DIR/dots-update" --transcribed
+  else
+    inner="$SELF_DIR/dots-update"
+    SHELL=$BASH exec script -qefc "${inner@Q} --transcribed" "$LOG_FILE"
+  fi
 fi
 
-# Stage 3 (locked + transcribed): the pipeline.
+# Stage 3 (locked + transcribed): the pipeline. The lock lives on fd 9 in
+# the script(1) parent recording us; close our inherited copy so no child
+# (git, mise, migrations, hooks) can leave a daemon holding the lock.
+exec 9>&-
+
+# Signal deaths exit through the shell so both script(1) dialects report
+# the usual 128+n (BSD script would otherwise pass the raw signal number
+# through as the exit status). No end marker is written, so the next run
+# still reports the interrupted transcript.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # A deliberate abort still marks the transcript as finished, so the next run
 # doesn't misreport it as a crash.
@@ -117,12 +147,10 @@ fi
 
 # 3. Migrations, then the post-update hook — same order as omarchy update.
 # A migration failure must not skip the analyzer and restart report below.
-# Both run with the lock fd (9) closed, so a daemon they start cannot hold
-# the update lock forever.
 migrate_rc=0
-"$SELF_DIR/dots-migrate" 9>&- || migrate_rc=$?
+"$SELF_DIR/dots-migrate" || migrate_rc=$?
 if ((migrate_rc == 0)); then
-  "$SELF_DIR/dots-hook" post-update 9>&-
+  "$SELF_DIR/dots-hook" post-update
 else
   echo "Migrations failed (exit $migrate_rc); skipping the post-update hook."
 fi

@@ -31,9 +31,18 @@ mkdir -p "$(dirname "$LOCK")"
 # Append mode, so opening never clobbers a live holder's pid note.
 exec 9>>"$LOCK"
 
-if ! flock -n 9; then
-  holder=$(head -c 64 "$LOCK" 2>/dev/null | tr -dc '0-9')
+# -E gives contention its own exit code, so a real flock(2) failure (an
+# unsupported filesystem, say) is not misreported as a running update.
+rc=0
+flock -n -E 99 9 || rc=$?
+if ((rc == 99)); then
+  holder=""
+  { read -r holder <"$LOCK"; } 2>/dev/null || true
+  holder=${holder//[^0-9]/}
   echo "Another dots update is already running${holder:+ (pid $holder)}." >&2
+  exit 1
+elif ((rc != 0)); then
+  echo "Could not take the update lock: flock failed (exit $rc) on $LOCK." >&2
   exit 1
 fi
 
