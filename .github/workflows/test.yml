@@ -1,0 +1,32 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        # ubuntu covers the GNU userland + util-linux flock/script that dev
+        # Macs can't test; macos covers BSD userland + discoteq flock.
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # macOS pins /bin/bash at 3.2 and ships no flock; mirror what
+      # install/config/macos.sh sets up on a real machine.
+      - name: Install Homebrew bash and flock
+        if: runner.os == 'macOS'
+        run: brew install bash flock
+
+      - name: Tool versions
+        run: |
+          bash --version | head -1
+          command -v flock
+          command -v script
+
+      - name: Run test suites
+        run: ./test/all
