@@ -11,7 +11,10 @@
 log_file=${1:-$HOME/.local/state/dots/update.log}
 [[ -f $log_file ]] || exit 0
 
-matches=$(grep -E 'mise ERROR|Hook failed:|fatal: |Could not fast-forward' "$log_file" | sort -u | head -10)
+# script(1) records the pty verbatim, so signatures arrive wrapped in ANSI
+# color codes and CR line endings; strip both before matching.
+matches=$(sed -E $'s/\e\\[[0-9;]*[A-Za-z]//g; s/\r$//' "$log_file" |
+  grep -E 'mise ERROR|Hook failed:|fatal: |Could not fast-forward' | sort -u | head -10)
 
 if [[ -n $matches ]]; then
   echo

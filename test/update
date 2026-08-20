@@ -42,14 +42,25 @@ assertions=$((assertions + 1))
 # release is proven functionally, by re-acquiring)
 export DOTS_UPDATE_LOCK="$SANDBOX/update.lock"
 
+wait_for_lock_holder() { # block until <pid> owns the lock; the breadcrumb
+  local i holder                    # is written only after acquisition
+  for ((i = 0; i < 200; i++)); do
+    holder=""
+    { read -r holder <"$DOTS_UPDATE_LOCK"; } 2>/dev/null || true
+    [[ ${holder//[^0-9]/} == "$1" ]] && return 0
+    sleep 0.05
+  done
+  fail "pid $1 never acquired the lock"
+}
+
 out=$("$ROOT/bin/dots-update-lock" bash -c 'echo inside')
 assert_contains "$out" "inside" "lock runs its command"
 "$ROOT/bin/dots-update-lock" true || fail "lock not released after the command"
 assertions=$((assertions + 1))
 
-"$ROOT/bin/dots-update-lock" sleep 3 &
+"$ROOT/bin/dots-update-lock" sleep 30 &
 holder_pid=$!
-sleep 0.5
+wait_for_lock_holder "$holder_pid"
 rc=0
 out=$("$ROOT/bin/dots-update-lock" true 2>&1) || rc=$?
 if ((rc == 0)); then
@@ -61,7 +72,7 @@ assertions=$((assertions + 1))
 
 # SIGTERM ends the holder (the wrapper exec'd into it, so they are the same
 # process) and the kernel releases the lock with it
-kill -TERM "$holder_pid" 2>/dev/null
+kill -TERM "$holder_pid" 2>/dev/null || true
 wait "$holder_pid" 2>/dev/null || true
 "$ROOT/bin/dots-update-lock" true || fail "lock not released after SIGTERM"
 assertions=$((assertions + 1))
@@ -70,7 +81,7 @@ assertions=$((assertions + 1))
 # lock immediately, with no stale state left to reclaim
 "$ROOT/bin/dots-update-lock" sleep 30 &
 holder_pid=$!
-sleep 0.5
+wait_for_lock_holder "$holder_pid"
 kill -9 "$holder_pid" 2>/dev/null
 wait "$holder_pid" 2>/dev/null || true
 "$ROOT/bin/dots-update-lock" true || fail "lock not released after SIGKILL"

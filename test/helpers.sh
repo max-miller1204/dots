@@ -25,6 +25,7 @@ setup_sandbox() { # isolate $HOME; call once per suite
   export PATH="$ROOT/bin:$PATH"
   # Ambient config must not reach the suites: pipeline knobs exported in the
   # developer's shell, and host git config via the non-HOME lookup paths.
-  unset DOTS_UPDATE_FORCE DOTS_UPDATE_MIN_FREE_KB DOTS_UPDATE_LOCK XDG_CONFIG_HOME
+  unset DOTS_UPDATE_FORCE DOTS_UPDATE_MIN_FREE_KB DOTS_UPDATE_LOCK \
+    DOTS_UPDATE_LOCK_PID XDG_CONFIG_HOME
   export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 }
