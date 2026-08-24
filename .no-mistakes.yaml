@@ -1,0 +1,3 @@
+# Single-developer repo: honor `agent`, `commands`, and `pr.base_branch` from
+# the pushed branch instead of only this trusted default-branch copy.
+allow_repo_commands: true
