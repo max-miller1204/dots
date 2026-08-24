@@ -45,7 +45,9 @@ command_group() { # command_group <basename>  (dots-theme-set -> theme)
 
 trim() { # trim <string>
   local s=$1
+  # Remove leading whitespace: strip shortest prefix matching non-whitespace
   s=${s#"${s%%[![:space:]]*}"}
+  # Remove trailing whitespace: strip longest suffix matching non-whitespace
   s=${s%"${s##*[![:space:]]}"}
   echo "$s"
 }
@@ -81,7 +83,7 @@ command_help() { # command_help <file>
   if [[ -n $examples ]]; then
     echo
     echo "Examples:"
-    IFS='|' read -ra parsed <<<"$examples"
+    IFS=';;' read -ra parsed <<<"$examples"
     for example in "${parsed[@]}"; do
       example=$(trim "$example")
       [[ -n $example ]] && printf '  %s\n' "$example"

@@ -2,7 +2,7 @@
 
 # dots:summary=Install a tool globally with mise
 # dots:args=<tool[@version]...>
-# dots:examples=dots pkg add ripgrep | dots pkg add node@lts
+# dots:examples=dots pkg add ripgrep;;dots pkg add node@lts
 
 set -eo pipefail
 
