@@ -45,9 +45,9 @@ command_group() { # command_group <basename>  (dots-theme-set -> theme)
 
 trim() { # trim <string>
   local s=$1
-  # Remove leading whitespace: strip shortest prefix matching non-whitespace
+  # ${s%%[![:space:]]*} is the leading whitespace run; strip it as a prefix
   s=${s#"${s%%[![:space:]]*}"}
-  # Remove trailing whitespace: strip longest suffix matching non-whitespace
+  # ${s##*[![:space:]]} is the trailing whitespace run; strip it as a suffix
   s=${s%"${s##*[![:space:]]}"}
   echo "$s"
 }
@@ -58,7 +58,6 @@ trim() { # trim <string>
 # just run.
 command_help() { # command_help <file>
   local file=$1 base name summary args examples example
-  local -a parsed=()
 
   base=${file##*/}
   name=${base#dots-}
@@ -83,11 +82,15 @@ command_help() { # command_help <file>
   if [[ -n $examples ]]; then
     echo
     echo "Examples:"
-    IFS=';;' read -ra parsed <<<"$examples"
-    for example in "${parsed[@]}"; do
+    # Split on the literal ';;' separator by turning each one into a newline
+    # and reading the fields. IFS cannot do this: it holds a set of single
+    # characters, so IFS=';;' is just IFS=';' and would also split an example
+    # that contains a single semicolon. Metadata is scanned line by line, so
+    # an example can never itself contain a newline.
+    while IFS= read -r example; do
       example=$(trim "$example")
       [[ -n $example ]] && printf '  %s\n' "$example"
-    done
+    done <<<"${examples//;;/$'\n'}"
   fi
 }
 
