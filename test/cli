@@ -50,6 +50,36 @@ if "$ROOT/bin/dots" no-such-thing >/dev/null 2>&1; then
 fi
 assertions=$((assertions + 1))
 
+# Router: `<command> --help` describes the command instead of running it.
+# Greedy routing used to hand the flag straight to the command, so
+# `dots install --help` performed a full install.
+out=$("$ROOT/bin/dots" install --help)
+assert_contains "$out" "Usage: dots install" "install --help prints usage"
+[[ -e "$HOME/.config/mise/config.toml" ]] && fail "install --help ran the install"
+assertions=$((assertions + 1))
+
+# Router: command help renders args and examples from the metadata
+out=$("$ROOT/bin/dots" theme set --help)
+assert_contains "$out" "Usage: dots theme set <theme-name>" "command help shows args"
+assert_contains "$out" "dots theme set tokyo-night" "command help shows examples"
+[[ -e "$HOME/.local/state/dots/current/theme.name" ]] && fail "theme set --help applied a theme"
+assertions=$((assertions + 1))
+
+# Router: -h is equivalent to --help
+out=$("$ROOT/bin/dots" version -h)
+assert_contains "$out" "Usage: dots version" "-h prints usage"
+
+# Router: the flag is only intercepted when it is the sole remaining argument,
+# so commands that take their own flags still receive them
+if "$ROOT/bin/dots" theme set no-such-theme --help >/dev/null 2>&1; then
+  fail "--help after an argument should reach the command"
+fi
+assertions=$((assertions + 1))
+
+# Router: a group with no binary of its own still lists its commands
+out=$("$ROOT/bin/dots" pkg --help)
+assert_contains "$out" "pkg-add" "group --help lists subcommands"
+
 # refresh-config: seeds a file, then backs up a modified copy
 "$ROOT/bin/dots" refresh config git/config
 [[ -f "$HOME/.config/git/config" ]] || fail "refresh config did not seed git/config"
