@@ -2,7 +2,7 @@
 
 # dots:summary=Apply a theme
 # dots:args=<theme-name>
-# dots:examples=dots theme list | dots theme set tokyo-night
+# dots:examples=dots theme list ;; dots theme set tokyo-night
 
 set -eo pipefail
 
