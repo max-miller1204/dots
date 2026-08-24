@@ -2,6 +2,3 @@
 # the pushed branch instead of only this trusted default-branch copy.
 allow_repo_commands: true
 
-# This branch is stacked on feat/command-help (PR #3).
-pr:
-  base_branch: feat/command-help
