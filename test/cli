@@ -80,6 +80,28 @@ assertions=$((assertions + 1))
 out=$("$ROOT/bin/dots" pkg --help)
 assert_contains "$out" "pkg-add" "group --help lists subcommands"
 
+# Router: examples are split on the literal ';;' separator only. A single
+# semicolon inside one example must not split it -- IFS=';;' would, because
+# IFS holds a set of single characters rather than a delimiter string.
+tmpbin=$(mktemp -d)
+cat >"$tmpbin/dots-semicolon-probe" <<'PROBE'
+#!/usr/bin/env bash
+# dots:summary=Probe for separator handling
+# dots:args=<arg>
+# dots:examples=dots semicolon probe one; echo done;;dots semicolon probe two
+exit 0
+PROBE
+chmod +x "$tmpbin/dots-semicolon-probe"
+cp "$ROOT/bin/dots" "$tmpbin/dots"
+out=$("$tmpbin/dots" semicolon probe --help)
+assert_contains "$out" "dots semicolon probe one; echo done" "single ';' stays inside one example"
+assert_contains "$out" "dots semicolon probe two" "';;' still separates examples"
+if [[ $(grep -c '^  dots semicolon probe' <<<"$out") -ne 2 ]]; then
+  fail "expected exactly 2 examples, got: $out"
+fi
+rm -rf "$tmpbin"
+assertions=$((assertions + 1))
+
 # refresh-config: seeds a file, then backs up a modified copy
 "$ROOT/bin/dots" refresh config git/config
 [[ -f "$HOME/.config/git/config" ]] || fail "refresh config did not seed git/config"

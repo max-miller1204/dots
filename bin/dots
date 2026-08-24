@@ -57,8 +57,7 @@ trim() { # trim <string>
 # hand the flag to the command, and most commands ignore unknown flags and
 # just run.
 command_help() { # command_help <file>
-  local file=$1 base name summary args examples example
-  local -a parsed=()
+  local file=$1 base name summary args examples example remainder
 
   base=${file##*/}
   name=${base#dots-}
@@ -83,11 +82,17 @@ command_help() { # command_help <file>
   if [[ -n $examples ]]; then
     echo
     echo "Examples:"
-    IFS=';;' read -ra parsed <<<"$examples"
-    for example in "${parsed[@]}"; do
-      example=$(trim "$example")
+    # Split on the literal ';;' separator. IFS cannot do this: it holds a set
+    # of single characters, so IFS=';;' is just IFS=';' and would also split
+    # an example that contains a single semicolon.
+    remainder=$examples
+    while [[ $remainder == *';;'* ]]; do
+      example=$(trim "${remainder%%;;*}")
       [[ -n $example ]] && printf '  %s\n' "$example"
+      remainder=${remainder#*;;}
     done
+    example=$(trim "$remainder")
+    [[ -n $example ]] && printf '  %s\n' "$example"
   fi
 }
 
