@@ -1,0 +1,47 @@
+{
+  "findings": [
+    {
+      "id": "theme-set-example-separator",
+      "severity": "warning",
+      "file": "bin/dots-theme-set",
+      "line": 4,
+      "description": "The metadata for dots-theme-set uses '|' as a shell pipe within a single example: 'dots theme list | dots theme set tokyo-night'. The command_help function in bin/dots splits examples on ';;', so this renders as a single confusing example showing a pipe character. The test passes because it only checks for the substring 'dots theme set tokyo-night', but the help output is semantically wrong — it presents a shell pipeline as one example. This is a pre-existing metadata inconsistency that the new help system exposes. The fix round changed the separator to ';;' in command_help and updated dots-pkg-add, but missed dots-theme-set.",
+      "action": "ask-user",
+      "review_scope": "source"
+    },
+    {
+      "id": "trim-function-clarity",
+      "severity": "info",
+      "file": "bin/dots",
+      "line": 50,
+      "description": "The trim function (lines 50-54) uses bash parameter expansion with patterns ([![:space:]]) that are non-obvious to readers. A comment was added in the fix round explaining the idiom, which improves maintainability.",
+      "action": "no-op",
+      "review_scope": "source"
+    },
+    {
+      "id": "unrelated-gitignore-change",
+      "severity": "info",
+      "file": ".gitignore",
+      "line": 2,
+      "description": "The change adds '.claude/' to .gitignore which is unrelated to the per-command help feature. This appears to be a local agent state directory that should be ignored, but it's a separate concern from the feature being reviewed.",
+      "action": "no-op",
+      "review_scope": "source"
+    },
+    {
+      "id": "router-help-vs-command-help",
+      "severity": "info",
+      "file": "bin/dots",
+      "line": 175,
+      "description": "The router intercepts --help/-h and shows metadata-based help, which may not match a command's own --help output (e.g., dots-migrate supports -h|--help but its metadata doesn't document it). This is a design decision consistent with the metadata-driven approach, not a bug. Commands that want their own --help documented should add it to their metadata args.",
+      "action": "no-op",
+      "review_scope": "source"
+    }
+  ],
+  "tested": [
+    "./test/all"
+  ],
+  "testing_summary": "All 66 assertions pass across cli and update test suites. The new per-command help tests verify that --help/-h is intercepted at the router level, shows usage and examples from metadata, and does not execute the command. Tests also verify the flag is only intercepted when it's the sole remaining argument.",
+  "risk_level": "medium",
+  "risk_rationale": "The feature is well-implemented and tests pass, but one command (dots-theme-set) has a metadata inconsistency that renders confusing help output. This is a pre-existing issue exposed by the new feature, not introduced by it. The fix is straightforward (change '|' to ';;' in the metadata) but requires a decision on whether the example should be one pipeline example or two separate examples.",
+  "risk_scope": "source-or-external"
+}

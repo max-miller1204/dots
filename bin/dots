@@ -43,6 +43,54 @@ command_group() { # command_group <basename>  (dots-theme-set -> theme)
   echo "${rest%%-*}"
 }
 
+trim() { # trim <string>
+  local s=$1
+  # Remove leading whitespace: strip shortest prefix matching non-whitespace
+  s=${s#"${s%%[![:space:]]*}"}
+  # Remove trailing whitespace: strip longest suffix matching non-whitespace
+  s=${s%"${s##*[![:space:]]}"}
+  echo "$s"
+}
+
+# Per-command help, rendered from the same `# dots:` metadata the listings
+# use. Reachable as `dots <command> --help`: greedy routing would otherwise
+# hand the flag to the command, and most commands ignore unknown flags and
+# just run.
+command_help() { # command_help <file>
+  local file=$1 base name summary args examples example
+  local -a parsed=()
+
+  base=${file##*/}
+  name=${base#dots-}
+  name=${name//-/ }
+  summary=$(metadata "$file" summary)
+  args=$(metadata "$file" args)
+  examples=$(metadata "$file" examples)
+
+  if [[ -n $summary ]]; then
+    echo "dots $name - $summary"
+  else
+    echo "dots $name"
+  fi
+
+  echo
+  if [[ -n $args ]]; then
+    echo "Usage: dots $name $args"
+  else
+    echo "Usage: dots $name"
+  fi
+
+  if [[ -n $examples ]]; then
+    echo
+    echo "Examples:"
+    IFS=';;' read -ra parsed <<<"$examples"
+    for example in "${parsed[@]}"; do
+      example=$(trim "$example")
+      [[ -n $example ]] && printf '  %s\n' "$example"
+    done
+  fi
+}
+
 list_groups() {
   local file base group
   local -A seen=()
@@ -123,7 +171,12 @@ main() {
   done
 
   if [[ -n $best ]]; then
-    exec "$DOTS_BIN_DIR/$best" "${@:$((best_argc + 1))}"
+    local -a rest=("${@:$((best_argc + 1))}")
+    if ((${#rest[@]} == 1)) && [[ ${rest[0]} == -h || ${rest[0]} == --help ]]; then
+      command_help "$DOTS_BIN_DIR/$best"
+      exit 0
+    fi
+    exec "$DOTS_BIN_DIR/$best" "${rest[@]}"
   fi
 
   if [[ -n ${GROUP_DESCRIPTIONS[$1]:-} ]]; then
