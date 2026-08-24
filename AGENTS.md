@@ -38,9 +38,11 @@ Command metadata is comment-based, scanned from the first 20 lines:
 ```bash
 # dots:summary=One-line description shown in listings
 # dots:args=<arg> [optional-arg]
-# dots:examples=dots theme set tokyo-night
+# dots:examples=dots pkg add ripgrep;;dots pkg add node@lts
 # dots:hidden=true
 ```
+
+Multiple examples are separated by `;;` (no spaces required). The help renderer trims whitespace around each example.
 
 # Helper commands
 
