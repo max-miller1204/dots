@@ -25,7 +25,9 @@ The repo is the source of truth for *defaults*; your live files are yours.
 
 ## Commands
 
-Run `dots` for the full listing. Highlights:
+Run `dots` for the full listing, and `dots help <group>` to list one group's commands.
+`dots <command> --help` (or `-h`) prints that command's usage and examples without running it.
+Highlights:
 
 | Command | Purpose |
 | --- | --- |

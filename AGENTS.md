@@ -29,7 +29,7 @@ This repo replicates omarchy's dotfiles architecture on macOS. Read
 
 All commands start with `dots-` and route through `bin/dots`:
 `dots theme set x` → `bin/dots-theme-set x`. The authoritative list of
-user-facing groups lives in `group_description()` in `bin/dots`; keep it
+user-facing groups lives in `GROUP_DESCRIPTIONS` in `bin/dots`; keep it
 updated when adding a new browsable prefix. A group whose commands are all
 hidden gets no entry.
 

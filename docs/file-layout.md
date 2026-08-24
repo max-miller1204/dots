@@ -81,4 +81,4 @@ Rendering only happens when the staged theme has a `colors.toml`.
 | New theme | `themes/<name>/colors.toml` |
 | App output that should follow themes | `default/themed/<file>.tpl` |
 | Personal machine-only theme/template/hook | `~/.config/dots/` |
-| New user-facing command | `bin/dots-<group>-<verb>` + `group_description()` in `bin/dots` |
+| New user-facing command | `bin/dots-<group>-<verb>` + `GROUP_DESCRIPTIONS` in `bin/dots` |
