@@ -57,7 +57,7 @@ Then commit, and `dots update` on your other machines picks it up. Terminal and 
 
 `themes/<name>/colors.toml` defines a palette; `default/themed/*.tpl` are templates with `{{ key }}` placeholders (`{{ accent }}`, `{{ accent_strip }}`, `{{ accent_rgb }`). The renderer accepts quoted, top-level palette values plus the derived `selection_background` and `selection_foreground` keys; it deliberately does not implement Omarchy's mix or gradient expressions.
 
-`dots theme set <name>` validates the identifier, takes an exclusive lock, builds a unique generation, overlays regular files from `~/.config/dots/themes/<name>/`, renders templates, and atomically switches `~/.local/state/dots/current` to the complete generation. The immediately previous generation is retained for recovery. Theme source trees are trusted local inputs but may not contain symlinks; there is intentionally no remote-theme installer.
+`dots theme set <name>` validates the identifier, takes an exclusive lock, builds a unique generation, overlays regular files from `~/.config/dots/themes/<name>/`, renders templates when the theme provides `colors.toml`, and atomically switches `~/.local/state/dots/current` to the complete generation. The immediately previous generation is retained for recovery. Theme source trees are trusted local inputs but may not contain symlinks; there is intentionally no remote-theme installer.
 
 Point app configs at the generated files, e.g. for ghostty:
 
@@ -65,11 +65,11 @@ Point app configs at the generated files, e.g. for ghostty:
 config-file = ~/.local/state/dots/current/theme/ghostty.conf
 ```
 
-Versioned synchronizers in `bin/` integrate apps before the separate user `theme-set` hook runs. They link btop as `dots-system.theme`, link the Neovim Lazy plugin as `dots-system.lua`, copy theme payloads for configured Pi and Claude installations, and refresh live tmux styles. Only missing or demonstrably dots-owned links are replaced. The generated `tmux.conf` is sourced by the base tmux config, so new servers inherit the active theme. The generated `obsidian.css` is available for an Obsidian CSS theme or snippet.
+Versioned synchronizers in `bin/` integrate apps before the separate user `theme-set` hook runs. They link btop as `dots-system.theme`, link the Neovim Lazy plugin as `dots-system.lua`, copy theme payloads for configured Pi and Claude installations, and refresh live tmux styles. Btop and Neovim replace only missing or demonstrably dots-owned links. Pi and Claude preserve unowned payloads unless their bytes match the active generated payload, in which case dots safely adopts them; dots-owned payload publication is recoverable after interruption. The generated `tmux.conf` is sourced by the base tmux config, so new servers inherit the active theme. The generated `obsidian.css` is available for an Obsidian CSS theme or snippet.
 
 Normal theme changes never take over Pi or Claude preferences. Activate the stable generated theme explicitly once with `dots theme sync pi --activate` or `dots theme sync claude --activate`; subsequent dots theme changes update the payload behind that stable name.
 
-Add your own machine-wide templates in `~/.config/dots/themed/*.tpl`; they shadow built-ins with the same output name. Hand-written files in a theme dir always win over templates. Shipped palettes, templates, and portable defaults adapted from omarchy retain its [MIT license](LICENSE.omarchy).
+Add your own machine-wide templates in `~/.config/dots/themed/*.tpl`; they shadow built-ins with the same output name. Hand-written regular files in a theme dir win over templates; symlinks and non-regular output occupants are rejected. Rendering also fails before publication if a supported `{{ key }}` placeholder remains unresolved, leaving the active generation unchanged. Shipped palettes, templates, and portable defaults adapted from omarchy retain its [MIT license](LICENSE.omarchy).
 
 ## Migrations
 

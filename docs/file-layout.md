@@ -76,8 +76,9 @@ themes/<name>/colors.toml  →  staged + rendered by dots-theme-set
 3. Build a unique generation under `~/.local/state/dots/theme-generations/`
    with a durable dots-ownership marker and complete theme/name payload.
 4. Copy the first-party theme, overlay regular user theme files, and render
-   user templates before built-ins. Existing generation outputs are not
-   overwritten, so hand-written theme files and user templates still win.
+   user templates before built-ins. Existing regular generation outputs are
+   not overwritten, so hand-written theme files and user templates still win;
+   symlinks and non-regular output occupants are rejected.
 5. Revalidate the renamed generation's marker and contents, atomically prepare
    `theme-previous` with the current generation, then replace
    the `current` symlink. `current/theme` and `current/theme.name` therefore
@@ -87,11 +88,13 @@ themes/<name>/colors.toml  →  staged + rendered by dots-theme-set
    through resumable atomic trash renames, run the separate user `theme-set`
    hook, then release the lock.
 
-Rendering requires `colors.toml`. Supported placeholders are `{{ key }}`,
+Template rendering occurs when the staged theme has `colors.toml`. Supported placeholders are `{{ key }}`,
 `{{ key_strip }}`, and `{{ key_rgb }}` for quoted top-level palette keys, plus
 selection foreground/background fallbacks. Mix, gradient, nested TOML, and
 remote-theme payload semantics are intentionally unsupported. Theme trees are
-trusted local data, but may not contain symlinks.
+trusted local data, but may not contain symlinks. A rendered output that still
+contains a supported placeholder is rejected before the generation is
+published.
 
 ## Quick reference: where does X live?
 

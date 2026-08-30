@@ -16,10 +16,12 @@
 # selection_foreground = bright_foreground, unless the theme defines them.
 # Omarchy's mix/gradient helpers are not implemented.
 #
-# Rendering only happens when the staged theme has colors.toml. Existing files
-# are never overwritten, so a hand-written themes/<name>/btop.theme wins over
-# default/themed/btop.theme.tpl. User templates are processed before built-ins,
-# so a user template with the same output filename shadows the built-in.
+# Rendering only happens when the staged theme has colors.toml. Existing
+# regular files are never overwritten, so a hand-written
+# themes/<name>/btop.theme wins over default/themed/btop.theme.tpl; symlinks and
+# non-regular occupants are rejected. User templates are processed before
+# built-ins, so a user template with the same output filename shadows the
+# built-in. Publication also fails if supported placeholders remain unresolved.
 
 set -eo pipefail
 
