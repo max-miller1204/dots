@@ -126,6 +126,92 @@ if [[ -o interactive ]]; then
 fi
 EOF
 
+cat >"$tmp_dir/bashrc.41d3229" <<'EOF'
+# This file is yours. It is seeded from ~/dotfiles/default/bashrc at install
+# (with a backup of any previous version) and never touched by `dots update`.
+# `dots reinstall configs` resets it to the shipped default.
+
+# Resolve plain checkout-path data before env-bootstrap itself is available.
+dots_bootstrap_path=${DOTS_PATH:-}
+if [[ -z $dots_bootstrap_path && ( -e $HOME/.config/dots/path || -L $HOME/.config/dots/path ) &&
+      ( -L $HOME/.config/dots/path || ! -f $HOME/.config/dots/path ) ]]; then
+  echo "Refusing non-regular checkout path file: $HOME/.config/dots/path" >&2
+  return 1 2>/dev/null || exit 1
+fi
+if [[ -z $dots_bootstrap_path && -f $HOME/.config/dots/path ]]; then
+  dots_bootstrap_count=0
+  while IFS= read -r dots_bootstrap_line || [[ -n $dots_bootstrap_line ]]; do
+    dots_bootstrap_count=$((dots_bootstrap_count + 1))
+    dots_bootstrap_path=$dots_bootstrap_line
+  done <"$HOME/.config/dots/path"
+  ((dots_bootstrap_count == 1)) || dots_bootstrap_path=""
+fi
+if [[ -z $dots_bootstrap_path || $dots_bootstrap_path == *$'\n'* || $dots_bootstrap_path == *:* ]]; then
+  dots_bootstrap_path="$HOME/dotfiles"
+fi
+. "$dots_bootstrap_path/default/bash/env-bootstrap"
+unset dots_bootstrap_path dots_bootstrap_count dots_bootstrap_line
+
+# Non-interactive Bash needs only DOTS_PATH and PATH. Keep aliases, history,
+# completion, directory hooks, and prompts out of SSH command and script shells.
+[[ $- == *i* ]] || return 0 2>/dev/null || exit 0
+
+. "$DOTS_PATH/default/bash/shell"
+. "$DOTS_PATH/default/bash/aliases"
+. "$DOTS_PATH/default/bash/functions"
+. "$DOTS_PATH/default/bash/init"
+
+if [[ $- == *i* ]]; then
+  bind -f "$DOTS_PATH/default/bash/inputrc"
+fi
+EOF
+
+cat >"$tmp_dir/zshrc.41d3229" <<'EOF'
+# This file is yours. It is seeded from ~/dotfiles/default/zshrc at install
+# (with a backup of any previous version) and never touched by `dots update`.
+# `dots reinstall configs` resets it to the shipped default.
+
+# Resolve plain checkout-path data before env-bootstrap itself is available.
+dots_bootstrap_path=${DOTS_PATH:-}
+if [[ -z $dots_bootstrap_path && ( -e $HOME/.config/dots/path || -L $HOME/.config/dots/path ) &&
+      ( -L $HOME/.config/dots/path || ! -f $HOME/.config/dots/path ) ]]; then
+  echo "Refusing non-regular checkout path file: $HOME/.config/dots/path" >&2
+  return 1 2>/dev/null || exit 1
+fi
+if [[ -z $dots_bootstrap_path && -f $HOME/.config/dots/path ]]; then
+  dots_bootstrap_count=0
+  while IFS= read -r dots_bootstrap_line || [[ -n $dots_bootstrap_line ]]; do
+    dots_bootstrap_count=$((dots_bootstrap_count + 1))
+    dots_bootstrap_path=$dots_bootstrap_line
+  done <"$HOME/.config/dots/path"
+  ((dots_bootstrap_count == 1)) || dots_bootstrap_path=""
+fi
+if [[ -z $dots_bootstrap_path || $dots_bootstrap_path == *$'\n'* || $dots_bootstrap_path == *:* ]]; then
+  dots_bootstrap_path="$HOME/dotfiles"
+fi
+. "$dots_bootstrap_path/default/bash/env-bootstrap"
+unset dots_bootstrap_path dots_bootstrap_count dots_bootstrap_line
+
+# These defaults intentionally use syntax shared by Bash 5 and Zsh.
+. "$DOTS_PATH/default/bash/shell"
+. "$DOTS_PATH/default/bash/aliases"
+. "$DOTS_PATH/default/bash/functions"
+. "$DOTS_PATH/default/bash/init"
+
+# Zsh uses ZLE rather than Readline, so mirror the useful inputrc bindings.
+if [[ -o interactive ]]; then
+  bindkey -e
+  autoload -Uz up-line-or-beginning-search down-line-or-beginning-search
+  zle -N up-line-or-beginning-search
+  zle -N down-line-or-beginning-search
+  bindkey '^[[A' up-line-or-beginning-search
+  bindkey '^[[B' down-line-or-beginning-search
+  bindkey '^[[Z' reverse-menu-complete
+  zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
+  zstyle ':completion:*' menu select
+fi
+EOF
+
 cat >"$tmp_dir/starship.old" <<'EOF'
 add_newline = true
 command_timeout = 200
@@ -161,19 +247,11 @@ renamed    = ""
 deleted    = ""
 EOF
 
-for shell_name in bash zsh; do
-  awk '
-    /^if \[\[ -z \$dots_bootstrap_path && -L \$HOME\/\.config\/dots\/path \]\]; then$/ { skip=1 }
-    skip && /^fi$/ { skip=0; next }
-    !skip { print }
-  ' "$DOTS_PATH/default/${shell_name}rc" >"$tmp_dir/${shell_name}rc.pre-symlink"
-done
-
 shell_changed=""
 if [[ -f $HOME/.bashrc ]] &&
   { cmp -s "$HOME/.bashrc" "$tmp_dir/bashrc.old" ||
     cmp -s "$HOME/.bashrc" "$tmp_dir/bashrc.intermediate" ||
-    cmp -s "$HOME/.bashrc" "$tmp_dir/bashrc.pre-symlink"; }; then
+    cmp -s "$HOME/.bashrc" "$tmp_dir/bashrc.41d3229"; }; then
   dots_file_replace "$DOTS_PATH/default/bashrc" "$HOME/.bashrc" backup
   echo "Updated stock ~/.bashrc (backup at $DOTS_FILE_BACKUP)"
   shell_changed=1
@@ -181,7 +259,7 @@ fi
 if [[ -f $HOME/.zshrc ]] &&
   { cmp -s "$HOME/.zshrc" "$tmp_dir/zshrc.old" ||
     cmp -s "$HOME/.zshrc" "$tmp_dir/zshrc.intermediate" ||
-    cmp -s "$HOME/.zshrc" "$tmp_dir/zshrc.pre-symlink"; }; then
+    cmp -s "$HOME/.zshrc" "$tmp_dir/zshrc.41d3229"; }; then
   dots_file_replace "$DOTS_PATH/default/zshrc" "$HOME/.zshrc" backup
   echo "Updated stock ~/.zshrc (backup at $DOTS_FILE_BACKUP)"
   shell_changed=1

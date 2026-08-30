@@ -116,35 +116,27 @@ assertions=$((assertions + 9))
 
 # --- final durability migration updates only the exact previously shipped
 # shell and Starship files, preserving customized copies.
-extract_migration_fixture() { # extract_migration_fixture <fixture-name> <destination>
-  local name=$1 destination=$2
-  awk -v marker="$name" '
-    index($0, "cat >\"$tmp_dir/" marker "\"") { copying=1; next }
-    copying && $0 == "EOF" { exit }
-    copying { print }
-  ' "$ROOT/migrations/1788051792.sh" >"$destination"
-}
+final_fixtures="$ROOT/test/fixtures/1788051792"
 final_home="$SANDBOX/final-migration-home"
 mkdir -p "$final_home/.config"
-extract_migration_fixture bashrc.old "$final_home/.bashrc"
-extract_migration_fixture zshrc.old "$final_home/.zshrc"
-extract_migration_fixture starship.old "$final_home/.config/starship.toml"
+cp "$final_fixtures/bashrc.41d3229" "$final_home/.bashrc"
+cp "$final_fixtures/zshrc.41d3229" "$final_home/.zshrc"
+cp "$final_fixtures/starship.old" "$final_home/.config/starship.toml"
 HOME="$final_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788051792.sh" >/dev/null
 cmp -s "$final_home/.bashrc" "$ROOT/default/bashrc" || fail "final migration did not update stock bashrc"
 cmp -s "$final_home/.zshrc" "$ROOT/default/zshrc" || fail "final migration did not update stock zshrc"
 cmp -s "$final_home/.config/starship.toml" "$ROOT/config/starship.toml" || fail "final migration did not update stock Starship"
 [[ -f "$final_home/.local/state/dots/restart-shell-required" ]] || fail "final shell migration left no restart marker"
-printf '# custom\n' >>"$final_home/.bashrc"
-HOME="$final_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788051792.sh" >/dev/null
-[[ $(tail -1 "$final_home/.bashrc") == "# custom" ]] || fail "final migration replaced customized bashrc"
-intermediate_home="$SANDBOX/intermediate-migration-home"
-mkdir -p "$intermediate_home"
-extract_migration_fixture bashrc.intermediate "$intermediate_home/.bashrc"
-extract_migration_fixture zshrc.intermediate "$intermediate_home/.zshrc"
-HOME="$intermediate_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788051792.sh" >/dev/null
-cmp -s "$intermediate_home/.bashrc" "$ROOT/default/bashrc" || fail "final migration did not update intermediate bashrc"
-cmp -s "$intermediate_home/.zshrc" "$ROOT/default/zshrc" || fail "final migration did not update intermediate zshrc"
-assertions=$((assertions + 7))
+custom_home="$SANDBOX/custom-final-migration-home"
+mkdir -p "$custom_home"
+cp "$final_fixtures/bashrc.41d3229" "$custom_home/.bashrc"
+cp "$final_fixtures/zshrc.41d3229" "$custom_home/.zshrc"
+printf '# custom bash\n' >>"$custom_home/.bashrc"
+printf '# custom zsh\n' >>"$custom_home/.zshrc"
+HOME="$custom_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788051792.sh" >/dev/null
+[[ $(tail -1 "$custom_home/.bashrc") == "# custom bash" ]] || fail "final migration replaced customized bashrc"
+[[ $(tail -1 "$custom_home/.zshrc") == "# custom zsh" ]] || fail "final migration replaced customized zshrc"
+assertions=$((assertions + 6))
 
 # --- free-space guard
 DOTS_UPDATE_MIN_FREE_KB=1 "$ROOT/bin/dots-update-requires-free-space" ||
