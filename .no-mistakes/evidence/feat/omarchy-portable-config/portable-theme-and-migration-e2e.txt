@@ -1,0 +1,36 @@
+$ dots theme set tokyo-night
+Theme set to tokyo-night.
+Generated files live in /var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T//dots-e2e.0RIBzY/.local/state/dots/current/theme — point your apps' configs there.
+
+$ dots theme current
+tokyo-night
+
+$ generated integrations
+alacritty.toml
+btop.theme
+claude.json
+colors.sh
+colors.toml
+ghostty.conf
+neovim.lua
+obsidian.css
+pi.json
+tmux.conf
+
+$ validate generated Pi and Claude JSON
+pi theme: dots-system
+claude theme: Dots
+
+$ dots theme set broken  # claude.json is a directory, not a regular override
+Refusing non-regular rendered output: /var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T//dots-e2e.0RIBzY/.local/state/dots/theme-generations/.staging.K9gNp5/theme/claude.json
+exit status: 1
+active generation unchanged: yes
+active theme: tokyo-night
+
+$ migrate historical stock files presented through user-managed symlinks
+bashrc remains symlink: yes
+zshrc remains symlink: yes
+starship remains symlink: yes
+bashrc target unchanged: yes
+zshrc target unchanged: yes
+starship target unchanged: yes
