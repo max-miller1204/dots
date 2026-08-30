@@ -392,6 +392,40 @@ old_generation=$(readlink "$HOME/.local/state/dots/current")
 [[ $(jq -r '.tui' "$HOME/.claude/settings.json") == "fullscreen" ]] || fail "Claude settings not preserved"
 assertions=$((assertions + 12))
 
+ownership_home="$SANDBOX/payload-ownership-home"
+ownership_generation="$ownership_home/.local/state/dots/theme-generations/generation.OWNED"
+mkdir -p "$ownership_generation/theme" "$ownership_home/.pi/agent/themes" "$ownership_home/.claude/themes"
+ln -s 'theme-generations/generation.OWNED' "$ownership_home/.local/state/dots/current"
+printf 'dots-theme-generation-v1\n' >"$ownership_generation/.dots-theme-generation"
+printf 'tokyo-night\n' >"$ownership_generation/theme.name"
+printf '{"name":"generated-pi"}\n' >"$ownership_generation/theme/pi.json"
+printf '{"name":"generated-claude"}\n' >"$ownership_generation/theme/claude.json"
+printf '{"name":"foreign-pi"}\n' >"$ownership_home/.pi/agent/themes/dots-system.json"
+printf '{"name":"foreign-claude"}\n' >"$ownership_home/.claude/themes/dots.json"
+if HOME="$ownership_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-sync-pi" >/dev/null 2>&1; then
+  fail "Pi sync replaced an unmarked foreign payload"
+fi
+if HOME="$ownership_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-sync-claude" >/dev/null 2>&1; then
+  fail "Claude sync replaced an unmarked foreign payload"
+fi
+[[ $(cat "$ownership_home/.pi/agent/themes/dots-system.json") == '{"name":"foreign-pi"}' ]] || fail "Pi sync altered a foreign payload"
+[[ $(cat "$ownership_home/.claude/themes/dots.json") == '{"name":"foreign-claude"}' ]] || fail "Claude sync altered a foreign payload"
+[[ ! -e "$ownership_home/.pi/agent/themes/dots-system.json.dots-owned" ]] || fail "Pi sync marked a foreign payload"
+[[ ! -e "$ownership_home/.claude/themes/dots.json.dots-owned" ]] || fail "Claude sync marked a foreign payload"
+cp "$ownership_generation/theme/pi.json" "$ownership_home/.pi/agent/themes/dots-system.json"
+cp "$ownership_generation/theme/claude.json" "$ownership_home/.claude/themes/dots.json"
+HOME="$ownership_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-sync-pi"
+HOME="$ownership_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-sync-claude"
+[[ $(cat "$ownership_home/.pi/agent/themes/dots-system.json.dots-owned") == "dots-owned-theme-payload-v1" ]] || fail "Pi identical payload was not safely adopted"
+[[ $(cat "$ownership_home/.claude/themes/dots.json.dots-owned") == "dots-owned-theme-payload-v1" ]] || fail "Claude identical payload was not safely adopted"
+printf '{"name":"updated-pi"}\n' >"$ownership_generation/theme/pi.json"
+printf '{"name":"updated-claude"}\n' >"$ownership_generation/theme/claude.json"
+HOME="$ownership_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-sync-pi"
+HOME="$ownership_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-sync-claude"
+cmp -s "$ownership_generation/theme/pi.json" "$ownership_home/.pi/agent/themes/dots-system.json" || fail "marked Pi payload was not updated"
+cmp -s "$ownership_generation/theme/claude.json" "$ownership_home/.claude/themes/dots.json" || fail "marked Claude payload was not updated"
+assertions=$((assertions + 14))
+
 activation_home="$SANDBOX/activation-home"
 mkdir -p "$activation_home"
 if HOME="$activation_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-sync-pi" --activate >/dev/null 2>&1; then

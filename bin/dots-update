@@ -90,6 +90,19 @@ finish_update() {
   exit "$status"
 }
 
+promote_orderly_exit() {
+  local expected=${1:-}
+  local -a orderly_lines=()
+
+  [[ -f $LOG_FILE && -f $ORDERLY_EXIT_FILE ]] || return 0
+  mapfile -t orderly_lines <"$ORDERLY_EXIT_FILE"
+  ((${#orderly_lines[@]} == 1)) || return 0
+  [[ ${orderly_lines[0]} =~ ^(0|[1-9][0-9]{0,2})$ ]] || return 0
+  ((${orderly_lines[0]} <= 255)) || return 0
+  [[ -z $expected || ${orderly_lines[0]} == "$expected" ]] || return 0
+  dots_file_replace "$ORDERLY_EXIT_FILE" "$TERMINAL_STATUS_FILE" discard
+}
+
 if [[ -z $transcribed ]]; then
   # Stage 1: serialize with any other running update. Stage 2 may only run
   # in the lock wrapper's own exec'd process: the sentinel must equal our
@@ -108,6 +121,7 @@ if [[ -z $transcribed ]]; then
   # means that run died — preserve it and leave a note marker for the
   # transcribed stage to report.
   mkdir -p "$STATE_DIR"
+  promote_orderly_exit
   if [[ -e $LOG_FILE && ! -f $TERMINAL_STATUS_FILE ]]; then
     # Publish the warning marker before moving the only transcript. A death at
     # either boundary therefore leaves enough state for the next run to report.
@@ -157,13 +171,7 @@ if [[ -z $transcribed ]]; then
     inner="$SELF_DIR/dots-update"
     SHELL=$BASH script -qefc "${inner@Q} --transcribed" "$LOG_FILE" || script_rc=$?
   fi
-  orderly_lines=()
-  if [[ -f $ORDERLY_EXIT_FILE ]]; then
-    mapfile -t orderly_lines <"$ORDERLY_EXIT_FILE"
-  fi
-  if ((${#orderly_lines[@]} == 1)) && [[ ${orderly_lines[0]} == "$script_rc" ]]; then
-    dots_file_replace "$ORDERLY_EXIT_FILE" "$TERMINAL_STATUS_FILE" discard
-  fi
+  promote_orderly_exit "$script_rc"
   dots_file_remove "$ORDERLY_EXIT_FILE" discard
   exit "$script_rc"
 fi

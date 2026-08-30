@@ -365,6 +365,9 @@ if [[ -e $HOME/.local/state/dots/update-terminal-status ]]; then
   exit 88
 fi
 printf 'recorder flush complete\n' >>"$transcript"
+if [[ ${DOTS_UPDATE_TEST_KILL_AFTER_SCRIPT:-} == "1" ]]; then
+  kill -KILL "$PPID"
+fi
 exit "$rc"
 EOF
 chmod +x "$SANDBOX/stub/script"
@@ -377,6 +380,20 @@ grep -q "recorder flush complete" "$HOME/.local/state/dots/update.log" || fail "
 [[ -f "$HOME/.local/state/dots/update-terminal-status" ]] || fail "recorder return omitted terminal sidecar"
 [[ $(git -C "$checkout" log --oneline -1) == *c3* ]] || fail "update did not pull the new commit"
 assertions=$((assertions + 5))
+
+rc=0
+PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" DOTS_UPDATE_TEST_KILL_AFTER_SCRIPT=1 \
+  bash -c '"$1" & child=$!; wait "$child"' bash "$ROOT/bin/dots-update" >/dev/null 2>&1 || rc=$?
+((rc != 0)) || fail "post-recorder crash did not terminate outer update"
+[[ -f "$HOME/.local/state/dots/update-orderly-exit" ]] || fail "post-recorder crash lost orderly evidence"
+[[ ! -e "$HOME/.local/state/dots/update-terminal-status" ]] || fail "post-recorder crash prematurely published terminal status"
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update")
+case "$out" in
+  *"did not finish cleanly"*) fail "surviving orderly evidence was reported as a crash" ;;
+esac
+[[ ! -e "$HOME/.local/state/dots/update-orderly-exit" ]] || fail "promoted orderly evidence was not cleared"
+[[ -f "$HOME/.local/state/dots/update-terminal-status" ]] || fail "surviving orderly evidence was not promoted"
+assertions=$((assertions + 6))
 
 printf 'external restart\n' >"$SANDBOX/external-restart"
 ln -s "$SANDBOX/external-restart" "$HOME/.local/state/dots/restart-unsafe-required"

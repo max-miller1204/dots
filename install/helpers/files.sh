@@ -180,3 +180,48 @@ dots_file_remove() {
 
   DOTS_FILE_CHANGED=1
 }
+
+dots_file_sync_owned_payload() {
+  local src=$1 dest=$2 marker=$3 label=$4 marker_source owned=""
+  local -a marker_lines=()
+
+  dots_file_assert_safe_parents "$dest" "$HOME" || return 1
+  dots_file_assert_safe_parents "$marker" "$HOME" || return 1
+
+  if [[ -L $dest || ( -e $dest && ! -f $dest ) ]]; then
+    echo "Refusing unsafe $label payload: $dest" >&2
+    return 1
+  fi
+  if [[ -L $marker || ( -e $marker && ! -f $marker ) ]]; then
+    echo "Refusing unsafe $label ownership marker: $marker" >&2
+    return 1
+  fi
+
+  if [[ -f $marker ]]; then
+    mapfile -t marker_lines <"$marker"
+    if ((${#marker_lines[@]} != 1)) || [[ ${marker_lines[0]} != "dots-owned-theme-payload-v1" ]]; then
+      echo "Refusing invalid $label ownership marker: $marker" >&2
+      return 1
+    fi
+    owned=1
+  fi
+
+  if [[ -f $dest && -z $owned ]] && ! cmp -s "$src" "$dest"; then
+    echo "Refusing unowned $label payload: $dest" >&2
+    return 1
+  fi
+
+  if [[ -n $owned || ! -f $dest ]]; then
+    dots_file_replace "$src" "$dest" discard || return 1
+  fi
+
+  if [[ -z $owned ]]; then
+    marker_source=$(mktemp "${TMPDIR:-/tmp}/dots-owned-payload.XXXXXX") || return 1
+    printf 'dots-owned-theme-payload-v1\n' >"$marker_source"
+    if ! dots_file_replace "$marker_source" "$marker" discard; then
+      rm -f "$marker_source"
+      return 1
+    fi
+    rm -f "$marker_source"
+  fi
+}
