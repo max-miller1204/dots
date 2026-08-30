@@ -111,6 +111,18 @@ PATH="/usr/bin:/bin" DOTS_PATH="$ROOT" bash -c 'source "$1"; [[ $PATH == "$DOTS_
   bash "$ROOT/default/bashrc" || fail "non-interactive bashrc missed env bootstrap"
 assertions=$((assertions + 2))
 
+mkdir -p "$SANDBOX/eza-stub"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$SANDBOX/eza-stub/eza"
+chmod +x "$SANDBOX/eza-stub/eza"
+alias_out=$(PATH="$SANDBOX/eza-stub:/usr/bin:/bin" bash -c \
+  'source "$1"; alias ls; alias ll; alias lt' bash "$ROOT/default/bash/aliases")
+case "$alias_out" in
+  *--icons*) fail "eza aliases enabled unprovisioned icons" ;;
+esac
+assert_contains "$alias_out" "--group-directories-first" "eza aliases preserve directory grouping"
+assert_contains "$alias_out" "--tree --level=2 --long --git" "eza tree alias preserves portable options"
+assertions=$((assertions + 1))
+
 # Direct commands that have not sourced shell startup still honor the serialized
 # canonical checkout path.
 serialized_repo="$SANDBOX/serialized checkout"
