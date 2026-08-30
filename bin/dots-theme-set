@@ -4,26 +4,45 @@
 # dots:args=<theme-name>
 # dots:examples=dots theme list ;; dots theme set tokyo-night
 
-set -eo pipefail
+set -euo pipefail
 
-DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=${DOTS_PATH:-$("$SELF_DIR/dots-path-resolve")}
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
+  exec "$DOTS_PATH/bin/dots-theme-set" "$@"
+fi
+source "$DOTS_PATH/install/helpers/files.sh"
 
-if [[ -z ${1:-} ]]; then
-  echo "Usage: dots-theme-set <theme-name>"
+if (( $# != 1 )); then
+  echo "Usage: dots-theme-set <theme-name>" >&2
   exit 1
 fi
 
-THEME_NAME=${1,,}
-THEME_NAME=${THEME_NAME// /-}
+THEME_NAME=$1
+if [[ ! $THEME_NAME =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+  echo "Invalid theme name: $THEME_NAME" >&2
+  echo "Theme names may contain lowercase letters, numbers, and single hyphens." >&2
+  exit 1
+fi
 
-STATE_DIR="$HOME/.local/state/dots/current"
-CURRENT_THEME_PATH="$STATE_DIR/theme"
-NEXT_THEME_PATH="$STATE_DIR/next-theme"
+STATE_ROOT="$HOME/.local/state/dots"
+GENERATIONS_DIR="$STATE_ROOT/theme-generations"
+CURRENT_PATH="$STATE_ROOT/current"
+PREVIOUS_PATH="$STATE_ROOT/theme-previous"
+RECOVERY_POINTER="$STATE_ROOT/.theme-current-recovery"
 USER_THEMES_PATH="$HOME/.config/dots/themes"
 DOTS_THEMES_PATH="$DOTS_PATH/themes"
+GENERATION_MARKER_NAME=".dots-theme-generation"
+GENERATION_MARKER_VALUE="dots-theme-generation-v1"
 
 theme_dir="$DOTS_THEMES_PATH/$THEME_NAME"
 user_theme_dir="$USER_THEMES_PATH/$THEME_NAME"
+
+if [[ -L $theme_dir || -L $user_theme_dir ]]; then
+  echo "Refusing theme $THEME_NAME: theme source directories must not be symlinks" >&2
+  exit 1
+fi
 
 if [[ ! -d $theme_dir && ! -d $user_theme_dir ]]; then
   echo "Unknown theme: $THEME_NAME" >&2
@@ -32,22 +51,382 @@ if [[ ! -d $theme_dir && ! -d $user_theme_dir ]]; then
   exit 1
 fi
 
-# Build a clean staging directory, then swap it in atomically — the omarchy
-# theme activation flow: copy first-party theme, overlay user theme files,
-# render templates, move into place.
-rm -rf "$NEXT_THEME_PATH"
-mkdir -p "$NEXT_THEME_PATH"
+THEME_LOCK="$STATE_ROOT/theme.lock"
+dots_file_assert_safe_parents "$THEME_LOCK" "$HOME"
+if [[ -L $GENERATIONS_DIR || ( -e $GENERATIONS_DIR && ! -d $GENERATIONS_DIR ) ]]; then
+  echo "Refusing unsafe theme generations path: $GENERATIONS_DIR" >&2
+  exit 1
+fi
+mkdir -p "$GENERATIONS_DIR"
+if [[ -L $GENERATIONS_DIR || ! -d $GENERATIONS_DIR ]]; then
+  echo "Theme generations path changed during creation: $GENERATIONS_DIR" >&2
+  exit 1
+fi
+dots_file_assert_safe_parents "$THEME_LOCK" "$HOME"
+"$DOTS_PATH/bin/dots-ensure-flock"
+if [[ -L $THEME_LOCK || ( -e $THEME_LOCK && ! -f $THEME_LOCK ) ]]; then
+  echo "Refusing unsafe theme lock path: $THEME_LOCK" >&2
+  exit 1
+fi
+exec 9>>"$THEME_LOCK"
+if [[ -L $THEME_LOCK || ! -f $THEME_LOCK ]]; then
+  echo "Theme lock path changed during open: $THEME_LOCK" >&2
+  exit 1
+fi
+if [[ $(uname -s) == "Darwin" ]]; then
+  lock_id=$(stat -f '%i' "$THEME_LOCK")
+  fd_id=$(stat -f '%i' /dev/fd/9)
+else
+  lock_id=$(stat -Lc '%d:%i' "$THEME_LOCK")
+  fd_id=$(stat -Lc '%d:%i' /proc/self/fd/9)
+fi
+if [[ $lock_id != "$fd_id" ]]; then
+  echo "Theme lock path changed during open: $THEME_LOCK" >&2
+  exit 1
+fi
+flock 9
 
-[[ -d $theme_dir ]] && cp -R "$theme_dir/." "$NEXT_THEME_PATH/"
-[[ -d $user_theme_dir ]] && cp -R "$user_theme_dir/." "$NEXT_THEME_PATH/"
+pointer_target=""
+pointer_tmp_dir=""
+staging_path=""
+generation_marker_source=""
+cleanup() {
+  local recovery_target=""
 
-"$DOTS_PATH/bin/dots-theme-set-templates" "$NEXT_THEME_PATH"
+  # Repair the narrow legacy-upgrade window on ordinary command failures.
+  # The durable marker performs the same repair on the next run after SIGKILL.
+  if [[ ! -e $CURRENT_PATH && ! -L $CURRENT_PATH && -L $RECOVERY_POINTER ]]; then
+    recovery_target=$(readlink "$RECOVERY_POINTER")
+    if valid_generation_target "$recovery_target"; then
+      replace_pointer "$recovery_target" "$CURRENT_PATH" || true
+    fi
+  fi
+  [[ -z $staging_path ]] || rm -rf "$staging_path"
+  [[ -z $pointer_tmp_dir ]] || rm -rf "$pointer_tmp_dir"
+  [[ -z $generation_marker_source ]] || rm -f "$generation_marker_source"
+}
+trap cleanup EXIT
 
-rm -rf "$CURRENT_THEME_PATH"
-mv "$NEXT_THEME_PATH" "$CURRENT_THEME_PATH"
-printf '%s\n' "$THEME_NAME" >"$STATE_DIR/theme.name"
+replace_pointer() { # replace_pointer <relative-target> <pointer-path>
+  local target=$1 pointer=$2
 
-"$DOTS_PATH/bin/dots-hook" theme-set "$THEME_NAME"
+  pointer_tmp_dir=$(mktemp -d "$STATE_ROOT/.theme-pointer.XXXXXX")
+  ln -s "$target" "$pointer_tmp_dir/link"
+  theme_test_crash after-pointer-temp
+  # BSD mv follows a destination symlink to a directory unless -h is used;
+  # GNU mv uses -T for the same no-dereference replacement semantics.
+  if [[ -L $pointer ]]; then
+    if [[ $(uname -s) == "Darwin" ]]; then
+      mv -fh "$pointer_tmp_dir/link" "$pointer"
+    else
+      mv -fT "$pointer_tmp_dir/link" "$pointer"
+    fi
+  else
+    mv -f "$pointer_tmp_dir/link" "$pointer"
+  fi
+  rmdir "$pointer_tmp_dir"
+  pointer_tmp_dir=""
+}
+
+file_has_exact_line() { # file_has_exact_line <file> <expected>
+  local file=$1 expected=$2
+  local -a lines=()
+  [[ ! -L $file && -f $file ]] || return 1
+  mapfile -t lines <"$file"
+  ((${#lines[@]} == 1)) && [[ ${lines[0]} == "$expected" ]]
+}
+
+valid_generation_target() { # valid_generation_target <relative-target>
+  local target=$1 generation theme_name=""
+  local -a theme_name_lines=()
+  [[ $target =~ ^theme-generations/(generation|recovery)\.[A-Za-z0-9]+$ ]] || return 1
+  generation="$STATE_ROOT/$target"
+  [[ ! -L $generation && -d $generation ]] || return 1
+  [[ ! -L $generation/theme && -d $generation/theme ]] || return 1
+  [[ ! -L $generation/theme.name && -f $generation/theme.name ]] || return 1
+  mapfile -t theme_name_lines <"$generation/theme.name"
+  ((${#theme_name_lines[@]} == 1)) || return 1
+  theme_name=${theme_name_lines[0]}
+  [[ $theme_name =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || return 1
+  file_has_exact_line "$generation/$GENERATION_MARKER_NAME" "$GENERATION_MARKER_VALUE"
+}
+
+theme_test_crash() { # private deterministic SIGKILL boundary for lifecycle tests
+  [[ ${DOTS_THEME_TEST_CRASH_AT:-} == "$1" ]] || return 0
+  kill -KILL "$$"
+}
+
+reject_theme_symlinks() { # reject_theme_symlinks <theme-tree> <description>
+  local tree=$1 description=$2 link
+
+  [[ -e $tree || -L $tree ]] || return 0
+  if [[ -L $tree ]]; then
+    link=$tree
+  else
+    link=$(find "$tree" -type l -print)
+  fi
+  if [[ -n $link ]]; then
+    echo "Refusing $description: theme trees must not contain symlinks ($link)" >&2
+    return 1
+  fi
+}
+
+validate_legacy_current() {
+  [[ -d $CURRENT_PATH && ! -L $CURRENT_PATH ]] || return 1
+  [[ ! -L $CURRENT_PATH/theme && -d $CURRENT_PATH/theme ]] || return 1
+  reject_theme_symlinks "$CURRENT_PATH/theme" "legacy current theme" || return 1
+  [[ ! -L $CURRENT_PATH/theme.name && -f $CURRENT_PATH/theme.name ]] || return 1
+  mapfile -t legacy_validation_names <"$CURRENT_PATH/theme.name"
+  ((${#legacy_validation_names[@]} == 1)) || return 1
+  [[ ${legacy_validation_names[0]} =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]
+}
+
+prune_generation_path() { # prune_generation_path <owned-generation-path>
+  local path=$1 trash
+  trash=$(mktemp -d "$GENERATIONS_DIR/.pruning.XXXXXX")
+  rmdir "$trash"
+  mv "$path" "$trash"
+  if [[ ${DOTS_THEME_TEST_CRASH_DURING_PRUNE:-} == "1" ]]; then
+    kill -KILL "$$"
+  fi
+  rm -rf "$trash"
+}
+
+# Validate every public occupant before repairing or pruning any state.
+startup_current_target=""
+startup_previous_target=""
+startup_legacy=""
+recovery_target=""
+stale_pre_move_recovery=""
+if [[ -L $CURRENT_PATH ]]; then
+  startup_current_target=$(readlink "$CURRENT_PATH")
+  valid_generation_target "$startup_current_target" || {
+    echo "Refusing foreign current theme pointer: $CURRENT_PATH" >&2
+    exit 1
+  }
+elif [[ -d $CURRENT_PATH ]]; then
+  validate_legacy_current || {
+    echo "Refusing malformed legacy current theme: $CURRENT_PATH" >&2
+    exit 1
+  }
+  startup_legacy=1
+elif [[ -e $CURRENT_PATH ]]; then
+  echo "Refusing occupied current theme path: $CURRENT_PATH" >&2
+  exit 1
+fi
+if [[ -e $RECOVERY_POINTER && ! -L $RECOVERY_POINTER ]]; then
+  echo "Refusing occupied recovery pointer path: $RECOVERY_POINTER" >&2
+  exit 1
+elif [[ -L $RECOVERY_POINTER ]]; then
+  recovery_target=$(readlink "$RECOVERY_POINTER")
+  if ! valid_generation_target "$recovery_target"; then
+    if [[ -n $startup_legacy && $recovery_target =~ ^theme-generations/recovery\.[A-Za-z0-9]+$ &&
+          ! -e $STATE_ROOT/$recovery_target && ! -L $STATE_ROOT/$recovery_target ]]; then
+      stale_pre_move_recovery=1
+      recovery_target=""
+    else
+      echo "Refusing invalid recovery pointer: $RECOVERY_POINTER" >&2
+      exit 1
+    fi
+  fi
+fi
+if [[ -L $PREVIOUS_PATH ]]; then
+  startup_previous_target=$(readlink "$PREVIOUS_PATH")
+  valid_generation_target "$startup_previous_target" || {
+    echo "Refusing foreign previous theme pointer: $PREVIOUS_PATH" >&2
+    exit 1
+  }
+elif [[ -e $PREVIOUS_PATH ]]; then
+  echo "Refusing occupied non-symlink previous theme path: $PREVIOUS_PATH" >&2
+  exit 1
+fi
+
+# A first upgrade from the old real current/ directory needs two renames. Leave
+# a recovery pointer first so an interrupted upgrade can be repaired next run.
+if [[ ! -e $CURRENT_PATH && ! -L $CURRENT_PATH ]]; then
+  pointer_target=${recovery_target:-$startup_previous_target}
+  if [[ -n $pointer_target ]]; then
+    replace_pointer "$pointer_target" "$CURRENT_PATH"
+    startup_current_target=$pointer_target
+  fi
+fi
+rm -f "$RECOVERY_POINTER"
+
+# Private interrupted paths are resumable and safe to discard after public
+# state has passed validation.
+for abandoned in "$GENERATIONS_DIR"/.staging.* "$GENERATIONS_DIR"/.pruning.* "$STATE_ROOT"/.theme-pointer.*; do
+  [[ -e $abandoned ]] && rm -rf "$abandoned"
+done
+
+# Prune complete-but-unpublished generations through an atomic trash rename.
+for abandoned_generation in "$GENERATIONS_DIR"/generation.* "$GENERATIONS_DIR"/recovery.*; do
+  [[ -e $abandoned_generation || -L $abandoned_generation ]] || continue
+  abandoned_target="theme-generations/${abandoned_generation##*/}"
+  valid_generation_target "$abandoned_target" || {
+    echo "Refusing unowned or malformed theme generation: $abandoned_generation" >&2
+    exit 1
+  }
+  if [[ $abandoned_target != "$startup_current_target" && $abandoned_target != "$startup_previous_target" ]]; then
+    prune_generation_path "$abandoned_generation"
+  fi
+done
+
+# Repeat source validation under the lock. A source removed after the initial
+# user-facing check must never result in an empty published generation.
+if [[ -L $theme_dir || -L $user_theme_dir ]]; then
+  echo "Refusing theme $THEME_NAME: theme source directories must not be symlinks" >&2
+  exit 1
+fi
+if [[ ! -d $theme_dir && ! -d $user_theme_dir ]]; then
+  echo "Theme sources disappeared before activation: $THEME_NAME" >&2
+  exit 1
+fi
+reject_theme_symlinks "$theme_dir" "first-party theme $THEME_NAME"
+reject_theme_symlinks "$user_theme_dir" "user theme $THEME_NAME"
+
+staging_path=$(mktemp -d "$GENERATIONS_DIR/.staging.XXXXXX")
+mkdir -p "$staging_path/theme"
+copied_source=0
+if [[ -d $theme_dir ]]; then
+  cp -RP "$theme_dir/." "$staging_path/theme/"
+  copied_source=1
+fi
+if [[ -d $user_theme_dir ]]; then
+  cp -RP "$user_theme_dir/." "$staging_path/theme/"
+  copied_source=1
+fi
+((copied_source == 1)) || {
+  echo "Theme sources disappeared during activation: $THEME_NAME" >&2
+  exit 1
+}
+"$DOTS_PATH/bin/dots-theme-set-templates" "$staging_path/theme"
+# Validate the copy too, closing the gap where a trusted local tree changed
+# between its source audit and cp. Regular extension files remain unrestricted.
+reject_theme_symlinks "$staging_path/theme" "staged theme $THEME_NAME"
+printf '%s\n' "$THEME_NAME" >"$staging_path/theme.name"
+printf '%s\n' "$GENERATION_MARKER_VALUE" >"$staging_path/$GENERATION_MARKER_NAME"
+theme_test_crash after-staging-build
+
+generation_token=${staging_path##*/.staging.}
+generation_path="$GENERATIONS_DIR/generation.$generation_token"
+if [[ ${DOTS_THEME_TEST_PRECREATE_GENERATION:-} == "1" ]]; then
+  mkdir "$generation_path"
+fi
+if [[ -e $generation_path || -L $generation_path ]]; then
+  echo "Refusing occupied generation destination: $generation_path" >&2
+  exit 1
+fi
+mv -n "$staging_path" "$generation_path"
+if [[ -d $staging_path ]]; then
+  echo "Generation destination appeared during publication: $generation_path" >&2
+  exit 1
+fi
+staging_path=""
+new_target="theme-generations/${generation_path##*/}"
+valid_generation_target "$new_target" || {
+  echo "Published generation failed ownership validation: $generation_path" >&2
+  exit 1
+}
+theme_test_crash after-generation-rename
+old_target=""
+
+if [[ -L $CURRENT_PATH ]]; then
+  old_target=$(readlink "$CURRENT_PATH")
+  if ! valid_generation_target "$old_target"; then
+    echo "Refusing to replace foreign current theme pointer: $CURRENT_PATH" >&2
+    exit 1
+  fi
+elif [[ -d $CURRENT_PATH ]]; then
+  validate_legacy_current || {
+    echo "Refusing malformed legacy current theme: $CURRENT_PATH" >&2
+    exit 1
+  }
+  legacy_marker="$CURRENT_PATH/$GENERATION_MARKER_NAME"
+  if [[ -e $legacy_marker || -L $legacy_marker ]]; then
+    file_has_exact_line "$legacy_marker" "$GENERATION_MARKER_VALUE" || {
+      echo "Refusing foreign legacy generation marker: $legacy_marker" >&2
+      exit 1
+    }
+  else
+    generation_marker_source=$(mktemp "${TMPDIR:-/tmp}/dots-theme-generation-marker.XXXXXX")
+    printf '%s\n' "$GENERATION_MARKER_VALUE" >"$generation_marker_source"
+    dots_file_replace "$generation_marker_source" "$legacy_marker" discard
+    rm -f "$generation_marker_source"
+    generation_marker_source=""
+  fi
+  legacy_path=$(mktemp -d "$GENERATIONS_DIR/recovery.XXXXXX")
+  rmdir "$legacy_path"
+  old_target="theme-generations/${legacy_path##*/}"
+  ln -s "$old_target" "$RECOVERY_POINTER"
+  theme_test_crash before-legacy-move
+  mv "$CURRENT_PATH" "$legacy_path"
+  if ! valid_generation_target "$old_target"; then
+    rm -f "$RECOVERY_POINTER"
+    mv "$legacy_path" "$CURRENT_PATH" 2>/dev/null || true
+    echo "Legacy theme failed validation after conversion" >&2
+    exit 1
+  fi
+  theme_test_crash after-legacy-move
+elif [[ -e $CURRENT_PATH ]]; then
+  echo "Refusing to replace non-directory current theme path: $CURRENT_PATH" >&2
+  exit 1
+fi
+
+# Prepare the rollback pointer before the public commit. Once current switches,
+# the genuine prior generation is therefore already durable across SIGKILL.
+if [[ -n $old_target ]]; then
+  replace_pointer "$old_target" "$PREVIOUS_PATH"
+else
+  rm -f "$PREVIOUS_PATH"
+fi
+theme_test_crash after-previous-pointer
+
+# current is the sole public commit point. Both current/theme and
+# current/theme.name resolve through this one atomic generation pointer.
+replace_pointer "$new_target" "$CURRENT_PATH"
+theme_test_crash after-current-pointer
+if [[ -e $RECOVERY_POINTER && ! -L $RECOVERY_POINTER ]]; then
+  echo "Refusing occupied recovery pointer path: $RECOVERY_POINTER" >&2
+  exit 1
+fi
+rm -f "$RECOVERY_POINTER"
+theme_test_crash after-recovery-removal
+
+# First-party integrations are versioned code, not copied user hooks. Run them
+# while the generation lock still pins the source observed by copy-based syncs.
+sync_rc=0
+for synchronizer in btop neovim pi claude tmux; do
+  if ! "$DOTS_PATH/bin/dots-theme-sync-$synchronizer" 9>&-; then
+    echo "Theme synchronizer failed: $synchronizer" >&2
+    sync_rc=1
+  fi
+done
+
+# Bound retained state to the active and immediately previous complete
+# generations. Interrupted, unpublished staging directories are handled above.
+for retained_path in "$GENERATIONS_DIR"/generation.* "$GENERATIONS_DIR"/recovery.*; do
+  [[ -e $retained_path || -L $retained_path ]] || continue
+  retained_target="theme-generations/${retained_path##*/}"
+  valid_generation_target "$retained_target" || {
+    echo "Refusing unowned or malformed retained generation: $retained_path" >&2
+    exit 1
+  }
+  if [[ $retained_target != "$new_target" && $retained_target != "$old_target" ]]; then
+    prune_generation_path "$retained_path"
+  fi
+done
+
+# User hooks are a separate extension point, but remain serialized so a hook
+# receiving this theme name cannot observe a newer concurrent generation.
+hook_rc=0
+"$DOTS_PATH/bin/dots-hook" theme-set "$THEME_NAME" 9>&- || hook_rc=$?
+
+flock -u 9
+exec 9>&-
 
 echo "Theme set to $THEME_NAME."
-echo "Generated files live in $CURRENT_THEME_PATH — point your apps' configs there."
+echo "Generated files live in $CURRENT_PATH/theme — point your apps' configs there."
+if ((sync_rc != 0 || hook_rc != 0)); then
+  echo "Theme applied, but one or more integrations or user hooks failed." >&2
+  exit 1
+fi

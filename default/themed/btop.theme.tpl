@@ -1,4 +1,4 @@
-# Main background
+# Main background, empty for terminal default, need to be empty if you want transparent background
 theme[main_bg]="{{ background }}"
 
 # Main text color
@@ -19,58 +19,75 @@ theme[selected_fg]="{{ accent }}"
 # Color of inactive/disabled text
 theme[inactive_fg]="{{ muted }}"
 
-# Color of text appearing on top of graphs
+# Color of text appearing on top of graphs, i.e uptime and current network graph scaling
 theme[graph_text]="{{ light_foreground }}"
 
 # Background color of the percentage meters
 theme[meter_bg]="{{ selection }}"
 
-# Misc colors for processes box
+# Misc colors for processes box including mini cpu graphs, details memory graph and details status text
 theme[proc_misc]="{{ light_foreground }}"
 
-# Box outline colors
-theme[cpu_box]="{{ muted }}"
-theme[mem_box]="{{ muted }}"
-theme[net_box]="{{ muted }}"
-theme[proc_box]="{{ muted }}"
+# CPU, Memory, Network, Proc box outline colors
+theme[cpu_box]="{{ magenta }}"
+theme[mem_box]="{{ green }}"
+theme[net_box]="{{ red }}"
+theme[proc_box]="{{ accent }}"
+
+# Box divider line and small boxes line color
 theme[div_line]="{{ muted }}"
 
-# Temperature graph colors
+# Temperature graph color (Green -> Yellow -> Red)
 theme[temp_start]="{{ green }}"
 theme[temp_mid]="{{ yellow }}"
 theme[temp_end]="{{ red }}"
 
-# CPU graph colors
+# CPU graph colors (Teal -> Blue -> Magenta)
 theme[cpu_start]="{{ cyan }}"
 theme[cpu_mid]="{{ blue }}"
 theme[cpu_end]="{{ magenta }}"
 
 # Mem/Disk free meter
-theme[free_start]="{{ green }}"
-theme[free_mid]="{{ green }}"
-theme[free_end]="{{ green }}"
+theme[free_start]="{{ magenta }}"
+theme[free_mid]="{{ blue }}"
+theme[free_end]="{{ cyan }}"
 
 # Mem/Disk cached meter
 theme[cached_start]="{{ blue }}"
-theme[cached_mid]="{{ blue }}"
-theme[cached_end]="{{ blue }}"
+theme[cached_mid]="{{ cyan }}"
+theme[cached_end]="{{ magenta }}"
 
 # Mem/Disk available meter
 theme[available_start]="{{ yellow }}"
-theme[available_mid]="{{ yellow }}"
-theme[available_end]="{{ yellow }}"
+theme[available_mid]="{{ red }}"
+theme[available_end]="{{ red }}"
 
-# Mem/Disk used meter
-theme[used_start]="{{ red }}"
-theme[used_mid]="{{ red }}"
-theme[used_end]="{{ red }}"
+# Mem/Disk used meter (Green -> Teal -> Blue)
+theme[used_start]="{{ green }}"
+theme[used_mid]="{{ cyan }}"
+theme[used_end]="{{ blue }}"
 
 # Download graph colors
-theme[download_start]="{{ green }}"
-theme[download_mid]="{{ green }}"
-theme[download_end]="{{ green }}"
+theme[download_start]="{{ yellow }}"
+theme[download_mid]="{{ red }}"
+theme[download_end]="{{ red }}"
 
-# Upload graph colors
-theme[upload_start]="{{ red }}"
-theme[upload_mid]="{{ red }}"
-theme[upload_end]="{{ red }}"
+# Upload graph colors (Green -> Teal -> Blue)
+theme[upload_start]="{{ green }}"
+theme[upload_mid]="{{ cyan }}"
+theme[upload_end]="{{ blue }}"
+
+# Process box color gradient for threads, mem and cpu usage
+theme[process_start]="{{ cyan }}"
+theme[process_mid]="{{ blue }}"
+theme[process_end]="{{ magenta }}"
+
+# Graph gradient colors (spectrum shades from background to foreground)
+theme[gradient_color_0]="{{ background }}"
+theme[gradient_color_1]="{{ lighter_background }}"
+theme[gradient_color_2]="{{ selection }}"
+theme[gradient_color_3]="{{ muted }}"
+theme[gradient_color_4]="{{ dark_foreground }}"
+theme[gradient_color_5]="{{ foreground }}"
+theme[gradient_color_6]="{{ light_foreground }}"
+theme[gradient_color_7]="{{ bright_foreground }}"

@@ -11,6 +11,14 @@ usage() {
   echo "Usage: dots-migrate [--pending]"
 }
 
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=${DOTS_PATH:-$("$SELF_DIR/dots-path-resolve")}
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
+  exec "$DOTS_PATH/bin/dots-migrate" "$@"
+fi
+source "$DOTS_PATH/install/helpers/files.sh"
+
 while (($#)); do
   case "$1" in
     --pending | --check)
@@ -27,34 +35,51 @@ while (($#)); do
       ;;
   esac
 done
-
-SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
 STATE_DIR="${DOTS_MIGRATION_STATE:-$HOME/.local/state/dots/migrations}"
 MIGRATIONS_DIR="$DOTS_PATH/migrations"
 
-migration_entries() {
+pending_migrations() {
+  local file name marker
+
   [[ -d $MIGRATIONS_DIR ]] || return 0
-
-  local file filename
-
   for file in "$MIGRATIONS_DIR"/*.sh; do
     [[ -f $file ]] || continue
-    filename=$(basename "$file")
-    printf '%s\t%s\t%s\n' "$filename" "$file" "$STATE_DIR/$filename"
+    name=${file##*/}
+    marker="$STATE_DIR/$name"
+    if [[ -L $marker || ( -e $marker && ! -f $marker ) ]]; then
+      echo "Refusing unsafe migration marker: $marker" >&2
+      return 1
+    fi
+    [[ -f $marker ]] || printf '%s\n' "$name"
   done
 }
 
-pending_migrations() {
-  local name file marker
-
-  while IFS=$'\t' read -r name file marker; do
-    [[ -n $name ]] || continue
-    if [[ ! -f $marker ]]; then
-      printf '%s\n' "$name"
-    fi
-  done < <(migration_entries)
-}
+MIGRATION_LOCK="$STATE_DIR/migrate.lock"
+"$SELF_DIR/dots-ensure-flock"
+dots_file_assert_safe_parents "$MIGRATION_LOCK" "$HOME"
+mkdir -p "$STATE_DIR"
+dots_file_assert_safe_parents "$MIGRATION_LOCK" "$HOME"
+if [[ -L $MIGRATION_LOCK || ( -e $MIGRATION_LOCK && ! -f $MIGRATION_LOCK ) ]]; then
+  echo "Refusing unsafe migration lock path: $MIGRATION_LOCK" >&2
+  exit 1
+fi
+exec 8>>"$MIGRATION_LOCK"
+if [[ -L $MIGRATION_LOCK || ! -f $MIGRATION_LOCK ]]; then
+  echo "Migration lock path changed during open: $MIGRATION_LOCK" >&2
+  exit 1
+fi
+if [[ $(uname -s) == "Darwin" ]]; then
+  lock_id=$(stat -f '%i' "$MIGRATION_LOCK")
+  fd_id=$(stat -f '%i' /dev/fd/8)
+else
+  lock_id=$(stat -Lc '%d:%i' "$MIGRATION_LOCK")
+  fd_id=$(stat -Lc '%d:%i' /proc/self/fd/8)
+fi
+if [[ $lock_id != "$fd_id" ]]; then
+  echo "Migration lock path changed during open: $MIGRATION_LOCK" >&2
+  exit 1
+fi
+flock 8
 
 if [[ $mode == "pending" ]]; then
   pending_output=$(pending_migrations)
@@ -66,21 +91,28 @@ if [[ $mode == "pending" ]]; then
   fi
 fi
 
-mkdir -p "$STATE_DIR"
 [[ -d $MIGRATIONS_DIR ]] || exit 0
 
-while IFS=$'\t' read -r name file marker; do
-  [[ -n $name ]] || continue
-
+empty_marker=$(mktemp "${TMPDIR:-/tmp}/dots-migration-marker.XXXXXX")
+trap 'rm -f "$empty_marker"' EXIT
+for file in "$MIGRATIONS_DIR"/*.sh; do
+  [[ -f $file ]] || continue
+  name=${file##*/}
+  marker="$STATE_DIR/$name"
+  if [[ -L $marker || ( -e $marker && ! -f $marker ) ]]; then
+    echo "Refusing unsafe migration marker: $marker" >&2
+    exit 1
+  fi
   if [[ ! -f $marker ]]; then
     echo -e "\033[32m\nRunning migration (${name%.sh})\033[0m"
-    DOTS_PATH="$DOTS_PATH" bash -euo pipefail "$file"
-    mkdir -p "$(dirname "$marker")"
-    touch "$marker"
+    DOTS_PATH="$DOTS_PATH" bash -euo pipefail "$file" 8>&-
+    dots_file_replace "$empty_marker" "$marker" discard
   fi
-done < <(migration_entries)
+done
 
 # Migrations may leave restart-*-required markers; report them here too so a
 # standalone `dots migrate` surfaces them instead of leaving them for the
 # next `dots update`.
-"$SELF_DIR/dots-update-restart"
+"$SELF_DIR/dots-update-restart" 8>&-
+flock -u 8
+exec 8>&-

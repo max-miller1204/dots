@@ -14,8 +14,15 @@ on macOS, `install/config/macos.sh` uses Homebrew to install modern bash
 (system `/bin/bash` is 3.2) and set it as the login shell — all scripts use
 `#!/usr/bin/env bash` and assume bash >= 4.
 `$DOTS_PATH` points at it (set by `default/bash/env-bootstrap`, sourced from
-`~/.bashrc` and `~/.zshrc`; non-default locations are recorded in
-`~/.config/dots/dots.conf`, the analog of omarchy's `/etc/omarchy.conf`).
+`~/.bashrc` and `~/.zshrc`). The canonical checkout path is stored as plain,
+non-executable data in `~/.config/dots/path`; the file must be a regular,
+non-symlink file containing exactly one non-empty line, and paths containing a
+newline or colon are rejected because
+they cannot be represented safely as one PATH entry.
+Shell startup and direct `dots-*` commands both resolve this same file, so cron,
+SSH, and absolute command invocations use the canonical checkout. A command
+reached through another checkout delegates to the canonical checkout's binary
+before parsing or mutating state, preventing stale-code/current-data mixtures.
 
 Three layers populate `$HOME` (omarchy's seed / finalize / resync):
 
@@ -26,6 +33,8 @@ Three layers populate `$HOME` (omarchy's seed / finalize / resync):
    what a plain copy can't: macOS `defaults`, first-run theme, identity checks.
 3. **Resync** — `dots refresh config <path>` (one file, backup + diff) and
    `dots reinstall configs` (everything, clobbers) reset to shipped defaults.
+   File replacement rejects final and parent-directory symlinks rather than
+   following writes outside the owned HOME or checkout tree.
 
 Your live files in `~/.config` are yours; the repo holds the defaults.
 
@@ -38,6 +47,9 @@ default/bashrc, bash_profile, zshrc
                            →  ~/.bashrc, ~/.bash_profile, ~/.zshrc  (seeded, then yours;
                               bash_profile delegates to bashrc for macOS login shells)
 default/bash/env-bootstrap →  sourced by both rc files      (DOTS_PATH + PATH)
+default/bash/{shell,aliases,functions,init}
+                           →  sourced by both rc files      (portable shell UX)
+default/bash/inputrc       →  loaded by interactive Bash   (Readline settings)
 default/themed/*.tpl       →  rendered into the active theme
 install/**                 →  run by dots-install
 migrations/*.sh            →  run by dots-migrate            (markers in state dir)
@@ -47,27 +59,39 @@ themes/<name>/colors.toml  →  staged + rendered by dots-theme-set
 ## State vs config
 
 - `~/.local/state/dots/` — machine state, never versioned: migration markers
-  (`migrations/`), done markers (`done/`), the generated active theme
-  (`current/theme`, `current/theme.name`), install/update transcripts
-  (`install.log`, `update.log`), and `restart-*-required` markers.
-- `~/.config/dots/` — files you may intentionally version: hooks
-  (`hooks/<event>.d/`), user themes (`themes/<name>/`), user templates
-  (`themed/*.tpl`), and `dots.conf` for non-default checkout locations.
+  (`migrations/`), done markers (`done/`), immutable theme generations
+  (`theme-generations/`), atomic active/previous pointers (`current`,
+  `theme-previous`), install/update transcripts (`install.log`, `update.log`),
+  and `restart-*-required` markers.
+- `~/.config/dots/` — user configuration: the plain checkout `path`, user-only
+  hooks (`hooks/<event>.d/`), user themes (`themes/<name>/`), and user templates
+  (`themed/*.tpl`). First-party theme integrations remain versioned in `bin/`.
 
 ## Theme activation flow
 
 `dots theme set <name>`:
 
-1. Build a clean staging dir at `~/.local/state/dots/current/next-theme`
-2. Copy the first-party theme from `themes/<name>/`
-3. Overlay user theme files from `~/.config/dots/themes/<name>/`
-4. Render templates (user `~/.config/dots/themed/*.tpl` first, then
-   `default/themed/*.tpl`; existing files are never overwritten, so
-   hand-written theme files beat templates and user templates shadow built-ins)
-5. Swap staging into `~/.local/state/dots/current/theme`, write `theme.name`,
-   fire the `theme-set` hook (theme name in `$1`)
+1. Validate the lowercase theme identifier and reject source-tree symlinks.
+2. Serialize transitions with `flock` and remove abandoned private staging dirs.
+3. Build a unique generation under `~/.local/state/dots/theme-generations/`
+   with a durable dots-ownership marker and complete theme/name payload.
+4. Copy the first-party theme, overlay regular user theme files, and render
+   user templates before built-ins. Existing generation outputs are not
+   overwritten, so hand-written theme files and user templates still win.
+5. Revalidate the renamed generation's marker and contents, atomically prepare
+   `theme-previous` with the current generation, then replace
+   the `current` symlink. `current/theme` and `current/theme.name` therefore
+   change together, while a SIGKILL after commit still preserves the real prior
+   generation.
+6. Run maintained app synchronizers, prune to active plus previous generations
+   through resumable atomic trash renames, run the separate user `theme-set`
+   hook, then release the lock.
 
-Rendering only happens when the staged theme has a `colors.toml`.
+Rendering requires `colors.toml`. Supported placeholders are `{{ key }}`,
+`{{ key_strip }}`, and `{{ key_rgb }}` for quoted top-level palette keys, plus
+selection foreground/background fallbacks. Mix, gradient, nested TOML, and
+remote-theme payload semantics are intentionally unsupported. Theme trees are
+trusted local data, but may not contain symlinks.
 
 ## Quick reference: where does X live?
 
@@ -75,7 +99,8 @@ Rendering only happens when the staged theme has a `colors.toml`.
 | --- | --- |
 | Default file at `~/.config/foo/` | `config/foo/`, then `dots refresh config foo/...` |
 | Adopt a live config into the repo | `dots config import foo/...` |
-| Shell alias/export for every shell | `default/bashrc` + `default/zshrc` |
+| Portable shell alias/function/default | shared file under `default/bash/`, sourced by both rc files |
+| Shell-specific startup behavior | `default/bashrc` or `default/zshrc` |
 | One-time setup step at install | leaf under `install/config/` or `install/user/`, wired into its `all.sh` |
 | One-time fix for existing installs | `migrations/$(date +%s).sh` |
 | New theme | `themes/<name>/colors.toml` |

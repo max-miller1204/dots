@@ -1,6 +1,6 @@
 [user]
 	name = Max Miller
-	email = maxmiller1204@gmail.com
+	email = maxmiller1204@outlook.com
 
 [init]
 	defaultBranch = main
@@ -11,7 +11,31 @@
 [push]
 	autoSetupRemote = true
 
+[diff]
+	algorithm = histogram
+	colorMoved = plain
+	mnemonicPrefix = true
+
+[commit]
+	verbose = true
+
+[column]
+	ui = auto
+	status = never
+
+[branch]
+	sort = -committerdate
+
+[tag]
+	sort = -version:refname
+
+[rerere]
+	enabled = true
+	autoupdate = true
+
 [alias]
 	st = status -sb
 	co = checkout
+	br = branch
+	ci = commit
 	lg = log --oneline --graph --decorate -20

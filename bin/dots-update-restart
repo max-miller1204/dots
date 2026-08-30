@@ -7,10 +7,23 @@
 # ~/.local/state/dots/restart-<component>-required. Each marker is reported
 # once and cleared (omarchy's restart-marker pattern).
 
+set -eo pipefail
+
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=${DOTS_PATH:-$("$SELF_DIR/dots-path-resolve")}
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd) || exit 1
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-update-restart" "$@"; fi
+source "$DOTS_PATH/install/helpers/files.sh"
+
 state_dir="$HOME/.local/state/dots"
+dots_file_assert_safe_parents "$state_dir/restart-probe-required" "$HOME"
 
 for marker in "$state_dir"/restart-*-required; do
-  [[ -f $marker ]] || continue
+  [[ -f $marker || -L $marker ]] || continue
+  if [[ -L $marker || ! -f $marker ]]; then
+    echo "Refusing unsafe restart marker: $marker" >&2
+    exit 1
+  fi
   name=${marker##*/restart-}
   name=${name%-required}
   case "$name" in

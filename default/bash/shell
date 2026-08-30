@@ -1,0 +1,13 @@
+# History
+if [[ -n ${BASH_VERSION:-} ]]; then
+  shopt -s histappend cmdhist
+  HISTCONTROL=ignoreboth:erasedups
+  HISTSIZE=32768
+  HISTFILESIZE=$HISTSIZE
+elif [[ -n ${ZSH_VERSION:-} ]]; then
+  HISTFILE=${ZDOTDIR:-$HOME}/.zsh_history
+  HISTSIZE=32768
+  SAVEHIST=$HISTSIZE
+  setopt append_history extended_history hist_expire_dups_first
+  setopt hist_ignore_all_dups hist_ignore_space share_history
+fi

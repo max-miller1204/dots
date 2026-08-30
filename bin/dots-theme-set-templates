@@ -23,7 +23,10 @@
 
 set -eo pipefail
 
-DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=${DOTS_PATH:-$("$SELF_DIR/dots-path-resolve")}
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-theme-set-templates" "$@"; fi
 
 staging=${1:?Usage: dots-theme-set-templates <staged-theme-dir>}
 colors_file="$staging/colors.toml"
@@ -33,10 +36,15 @@ colors_file="$staging/colors.toml"
 sedfile=$(mktemp "${TMPDIR:-/tmp}/dots-theme-rules.XXXXXX")
 trap 'rm -f "$sedfile"' EXIT
 
-emit_rules() { # emit_rules <key> <value>
-  local key=$1 val=$2 r g b
+escape_sed_replacement() {
+  printf '%s' "$1" | sed 's/[\\&|]/\\&/g'
+}
 
-  printf 's|{{ *%s_strip *}}|%s|g\n' "$key" "${val#\#}"
+emit_rules() { # emit_rules <key> <value>
+  local key=$1 val=$2 stripped escaped r g b
+
+  stripped=$(escape_sed_replacement "${val#\#}")
+  printf 's|{{ *%s_strip *}}|%s|g\n' "$key" "$stripped"
 
   if [[ $val =~ ^#([0-9a-fA-F][0-9a-fA-F])([0-9a-fA-F][0-9a-fA-F])([0-9a-fA-F][0-9a-fA-F])$ ]]; then
     r=$((16#${BASH_REMATCH[1]}))
@@ -45,7 +53,8 @@ emit_rules() { # emit_rules <key> <value>
     printf 's|{{ *%s_rgb *}}|%s,%s,%s|g\n' "$key" "$r" "$g" "$b"
   fi
 
-  printf 's|{{ *%s *}}|%s|g\n' "$key" "$val"
+  escaped=$(escape_sed_replacement "$val")
+  printf 's|{{ *%s *}}|%s|g\n' "$key" "$escaped"
 }
 
 selection_value=""

@@ -1,0 +1,29 @@
+# Open Neovim in the current directory when no path is supplied.
+n() {
+  if (( $# == 0 )); then
+    command nvim .
+  else
+    command nvim "$@"
+  fi
+}
+
+# Preserve macOS's native `open`; provide the familiar name on Linux only.
+if [[ $(uname -s) == "Linux" ]] && command -v xdg-open >/dev/null 2>&1; then
+  open() {
+    command xdg-open "$@" >/dev/null 2>&1 &
+  }
+fi
+
+# Prefer zoxide while retaining normal cd behavior for real paths.
+if command -v zoxide >/dev/null 2>&1; then
+  zd() {
+    if (( $# == 0 )); then
+      builtin cd ~ || return
+    elif [[ -d $1 ]]; then
+      builtin cd "$1" || return
+    else
+      z "$@"
+    fi
+  }
+  alias cd='zd'
+fi

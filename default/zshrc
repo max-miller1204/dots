@@ -2,15 +2,42 @@
 # (with a backup of any previous version) and never touched by `dots update`.
 # `dots reinstall configs` resets it to the shipped default.
 
-[ -f "$HOME/.config/dots/dots.conf" ] && . "$HOME/.config/dots/dots.conf"
-. "${DOTS_PATH:-$HOME/dotfiles}/default/bash/env-bootstrap"
-
-command -v mise >/dev/null 2>&1 && eval "$(mise activate zsh)"
-
-if [ "$(uname -s)" = "Darwin" ]; then
-  alias ls='ls -G'
-else
-  alias ls='ls --color=auto'
+# Resolve plain checkout-path data before env-bootstrap itself is available.
+dots_bootstrap_path=${DOTS_PATH:-}
+if [[ -z $dots_bootstrap_path && ( -e $HOME/.config/dots/path || -L $HOME/.config/dots/path ) &&
+      ( -L $HOME/.config/dots/path || ! -f $HOME/.config/dots/path ) ]]; then
+  echo "Refusing non-regular checkout path file: $HOME/.config/dots/path" >&2
+  return 1 2>/dev/null || exit 1
 fi
-alias ll='ls -lah'
-alias g='git'
+if [[ -z $dots_bootstrap_path && -f $HOME/.config/dots/path ]]; then
+  dots_bootstrap_count=0
+  while IFS= read -r dots_bootstrap_line || [[ -n $dots_bootstrap_line ]]; do
+    dots_bootstrap_count=$((dots_bootstrap_count + 1))
+    dots_bootstrap_path=$dots_bootstrap_line
+  done <"$HOME/.config/dots/path"
+  ((dots_bootstrap_count == 1)) || dots_bootstrap_path=""
+fi
+if [[ -z $dots_bootstrap_path || $dots_bootstrap_path == *$'\n'* || $dots_bootstrap_path == *:* ]]; then
+  dots_bootstrap_path="$HOME/dotfiles"
+fi
+. "$dots_bootstrap_path/default/bash/env-bootstrap"
+unset dots_bootstrap_path dots_bootstrap_count dots_bootstrap_line
+
+# These defaults intentionally use syntax shared by Bash 5 and Zsh.
+. "$DOTS_PATH/default/bash/shell"
+. "$DOTS_PATH/default/bash/aliases"
+. "$DOTS_PATH/default/bash/functions"
+. "$DOTS_PATH/default/bash/init"
+
+# Zsh uses ZLE rather than Readline, so mirror the useful inputrc bindings.
+if [[ -o interactive ]]; then
+  bindkey -e
+  autoload -Uz up-line-or-beginning-search down-line-or-beginning-search
+  zle -N up-line-or-beginning-search
+  zle -N down-line-or-beginning-search
+  bindkey '^[[A' up-line-or-beginning-search
+  bindkey '^[[B' down-line-or-beginning-search
+  bindkey '^[[Z' reverse-menu-complete
+  zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
+  zstyle ':completion:*' menu select
+fi
