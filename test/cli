@@ -541,7 +541,29 @@ HOME="$ownership_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-sync-pi"
 HOME="$ownership_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-sync-claude"
 cmp -s "$ownership_generation/theme/pi.json" "$ownership_home/.pi/agent/themes/dots-system.json" || fail "marked Pi payload was not updated"
 cmp -s "$ownership_generation/theme/claude.json" "$ownership_home/.claude/themes/dots.json" || fail "marked Claude payload was not updated"
-assertions=$((assertions + 14))
+
+# During a theme transition, the unmarked payload from older dots versions
+# matches the retained previous generation rather than the newly active one.
+previous_generation="$ownership_home/.local/state/dots/theme-generations/generation.PREVIOUS"
+mkdir -p "$previous_generation/theme"
+printf 'dots-theme-generation-v1\n' >"$previous_generation/.dots-theme-generation"
+printf 'catppuccin\n' >"$previous_generation/theme.name"
+printf '{"name":"previous-pi"}\n' >"$previous_generation/theme/pi.json"
+printf '{"name":"previous-claude"}\n' >"$previous_generation/theme/claude.json"
+ln -s 'theme-generations/generation.PREVIOUS' "$ownership_home/.local/state/dots/theme-previous"
+rm "$ownership_home/.pi/agent/themes/dots-system.json.dots-owned" \
+  "$ownership_home/.claude/themes/dots.json.dots-owned"
+cp "$previous_generation/theme/pi.json" "$ownership_home/.pi/agent/themes/dots-system.json"
+cp "$previous_generation/theme/claude.json" "$ownership_home/.claude/themes/dots.json"
+printf '{"name":"transitioned-pi"}\n' >"$ownership_generation/theme/pi.json"
+printf '{"name":"transitioned-claude"}\n' >"$ownership_generation/theme/claude.json"
+HOME="$ownership_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-sync-pi"
+HOME="$ownership_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-sync-claude"
+[[ $(cat "$ownership_home/.pi/agent/themes/dots-system.json.dots-owned") == "dots-owned-theme-payload-v1" ]] || fail "Pi previous-generation payload was not adopted"
+[[ $(cat "$ownership_home/.claude/themes/dots.json.dots-owned") == "dots-owned-theme-payload-v1" ]] || fail "Claude previous-generation payload was not adopted"
+cmp -s "$ownership_generation/theme/pi.json" "$ownership_home/.pi/agent/themes/dots-system.json" || fail "adopted Pi payload was not transitioned"
+cmp -s "$ownership_generation/theme/claude.json" "$ownership_home/.claude/themes/dots.json" || fail "adopted Claude payload was not transitioned"
+assertions=$((assertions + 18))
 
 activation_home="$SANDBOX/activation-home"
 mkdir -p "$activation_home"

@@ -182,7 +182,7 @@ dots_file_remove() {
 }
 
 dots_file_sync_owned_payload() {
-  local src=$1 dest=$2 marker=$3 label=$4
+  local src=$1 dest=$2 marker=$3 label=$4 trusted_existing=${5:-}
   local precommit="$marker.precommit" marker_source precommit_source recovered_source owned=""
   local -a marker_lines=()
 
@@ -248,8 +248,11 @@ dots_file_sync_owned_payload() {
   fi
 
   if [[ -f $dest && -z $owned ]] && ! cmp -s "$src" "$dest"; then
-    echo "Refusing unowned $label payload: $dest" >&2
-    return 1
+    if [[ -z $trusted_existing || -L $trusted_existing || ! -f $trusted_existing ]] ||
+      ! cmp -s "$trusted_existing" "$dest"; then
+      echo "Refusing unowned $label payload: $dest" >&2
+      return 1
+    fi
   fi
 
   precommit_source=$(mktemp "${TMPDIR:-/tmp}/dots-owned-precommit.XXXXXX") || return 1

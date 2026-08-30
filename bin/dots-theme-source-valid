@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
 
 # dots:hidden=true
-# Validate one generated source beneath the currently owned theme generation.
+# Validate one generated source beneath an owned retained theme generation.
 
 set -euo pipefail
 
+pointer_name=current
+if [[ ${1:-} == "--previous" ]]; then
+  pointer_name=theme-previous
+  shift
+fi
 if (( $# != 1 )) || [[ $1 == */* || -z $1 ]]; then
-  echo "Usage: dots-theme-source-valid <generated-filename>" >&2
+  echo "Usage: dots-theme-source-valid [--previous] <generated-filename>" >&2
   exit 1
 fi
 
 state_root="$HOME/.local/state/dots"
-current="$state_root/current"
-[[ -L $current ]] || exit 1
-target=$(readlink "$current")
+pointer="$state_root/$pointer_name"
+[[ -L $pointer ]] || exit 1
+target=$(readlink "$pointer")
 [[ $target =~ ^theme-generations/(generation|recovery)\.[A-Za-z0-9]+$ ]] || exit 1
 generation="$state_root/$target"
 marker="$generation/.dots-theme-generation"
