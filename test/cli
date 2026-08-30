@@ -597,6 +597,16 @@ ln -s "$ROOT/themes/tokyo-night/colors.toml" "$HOME/.config/dots/themes/symlinke
 if "$ROOT/bin/dots" theme set symlinked >/dev/null 2>&1; then
   fail "theme set accepted a symlink payload"
 fi
+dangling_render="$SANDBOX/dangling-render"
+dangling_render_target="$SANDBOX/dangling-render-target"
+mkdir -p "$dangling_render"
+cp "$ROOT/themes/tokyo-night/colors.toml" "$dangling_render/colors.toml"
+ln -s "$dangling_render_target" "$dangling_render/obsidian.css"
+if "$ROOT/bin/dots-theme-set-templates" "$dangling_render" >/dev/null 2>&1; then
+  fail "theme renderer accepted a dangling output symlink"
+fi
+[[ ! -e $dangling_render_target ]] || fail "theme renderer created a dangling symlink target"
+[[ -L $dangling_render/obsidian.css ]] || fail "theme renderer replaced a dangling output symlink"
 linked_theme_home="$SANDBOX/linked-theme-state-home"
 linked_theme_target="$SANDBOX/linked-theme-state-target"
 mkdir -p "$linked_theme_home" "$linked_theme_target"
@@ -634,7 +644,7 @@ if HOME="$invalid_recovery_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-set" to
   fail "theme set removed an invalid recovery symlink"
 fi
 [[ -L "$invalid_recovery_home/.local/state/dots/.theme-current-recovery" ]] || fail "invalid recovery symlink was removed"
-assertions=$((assertions + 14))
+assertions=$((assertions + 17))
 
 # Sed metacharacters in trusted local palette values render as literal data.
 mkdir -p "$HOME/.config/dots/themes/escaped" "$HOME/.config/dots/themed"

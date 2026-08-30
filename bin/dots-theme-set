@@ -299,9 +299,10 @@ fi
   echo "Theme sources disappeared during activation: $THEME_NAME" >&2
   exit 1
 }
-"$DOTS_PATH/bin/dots-theme-set-templates" "$staging_path/theme"
 # Validate the copy too, closing the gap where a trusted local tree changed
 # between its source audit and cp. Regular extension files remain unrestricted.
+reject_theme_symlinks "$staging_path/theme" "staged theme $THEME_NAME"
+"$DOTS_PATH/bin/dots-theme-set-templates" "$staging_path/theme"
 reject_theme_symlinks "$staging_path/theme" "staged theme $THEME_NAME"
 printf '%s\n' "$THEME_NAME" >"$staging_path/theme.name"
 printf '%s\n' "$GENERATION_MARKER_VALUE" >"$staging_path/$GENERATION_MARKER_NAME"
