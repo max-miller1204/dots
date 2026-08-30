@@ -1,0 +1,9 @@
+PASS end-to-end transition: previous=theme-generations/generation.wkZ24B current=theme-generations/generation.LogjjU
+PASS Pi: legacy unmarked payload matched retained previous generation, was adopted, marked, and replaced with active payload
+PASS Claude: legacy unmarked payload matched retained previous generation, was adopted, marked, and replaced with active payload
+PASS pi: genuinely foreign unmarked payload refused and left unchanged
+PASS pi: malformed previous-generation pointer refused; payload unchanged and unmarked
+PASS pi: unsafe symlinked previous generation refused; payload unchanged and unmarked
+PASS claude: genuinely foreign unmarked payload refused and left unchanged
+PASS claude: malformed previous-generation pointer refused; payload unchanged and unmarked
+PASS claude: unsafe symlinked previous generation refused; payload unchanged and unmarked

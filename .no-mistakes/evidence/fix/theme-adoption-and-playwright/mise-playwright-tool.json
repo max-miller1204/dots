@@ -1,0 +1,13 @@
+[
+  {
+    "version": "0.1.18",
+    "requested_version": "latest",
+    "install_path": "/Users/maxmiller/.local/share/mise/installs/npm-playwright-cli/0.1.18",
+    "source": {
+      "type": "mise.toml",
+      "path": "/private/var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T/dots-mise-project.6fBq9D/mise.toml"
+    },
+    "installed": true,
+    "active": true
+  }
+]
