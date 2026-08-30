@@ -89,6 +89,10 @@ render() { # render <template> — output lands in staging, named without .tpl
   out="$staging/$(basename "${tpl%.tpl}")"
   [[ -e $out ]] && return 0
   sed -f "$sedfile" "$tpl" >"$out"
+  if LC_ALL=C grep -Eq '\{\{[[:space:]]*[A-Za-z0-9_]+[[:space:]]*\}\}' "$out"; then
+    echo "Unresolved theme placeholder in rendered output: $out" >&2
+    return 1
+  fi
 }
 
 for tpl in "$HOME/.config/dots/themed"/*.tpl; do

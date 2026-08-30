@@ -576,12 +576,26 @@ assertions=$((assertions + 14))
 
 # Sed metacharacters in trusted local palette values render as literal data.
 mkdir -p "$HOME/.config/dots/themes/escaped" "$HOME/.config/dots/themed"
-printf 'accent = "#000000"\nlabel = "a\\\\b&|c"\n' >"$HOME/.config/dots/themes/escaped/colors.toml"
+cp "$ROOT/themes/tokyo-night/colors.toml" "$HOME/.config/dots/themes/escaped/colors.toml"
+printf 'label = "a\\\\b&|c"\n' >>"$HOME/.config/dots/themes/escaped/colors.toml"
 printf '{{ label }}\n' >"$HOME/.config/dots/themed/escape.txt.tpl"
 "$ROOT/bin/dots" theme set escaped >/dev/null 2>&1
 [[ $(cat "$HOME/.local/state/dots/current/theme/escape.txt") == 'a\\b&|c' ]] || fail "theme renderer corrupted sed metacharacters"
 rm -rf "$HOME/.config/dots/themes/escaped" "$HOME/.config/dots/themed/escape.txt.tpl"
 assertions=$((assertions + 1))
+
+incomplete_theme="$HOME/.config/dots/themes/incomplete"
+mkdir -p "$incomplete_theme"
+printf 'background = "#000000"\n' >"$incomplete_theme/colors.toml"
+before_incomplete=$(readlink "$HOME/.local/state/dots/current")
+before_incomplete_name=$(cat "$HOME/.local/state/dots/current/theme.name")
+if "$ROOT/bin/dots" theme set incomplete >/dev/null 2>&1; then
+  fail "theme set published an incomplete palette"
+fi
+[[ $(readlink "$HOME/.local/state/dots/current") == "$before_incomplete" ]] || fail "incomplete palette changed current generation"
+[[ $(cat "$HOME/.local/state/dots/current/theme.name") == "$before_incomplete_name" ]] || fail "incomplete palette changed active theme"
+rm -rf "$incomplete_theme"
+assertions=$((assertions + 3))
 
 before_collision=$(readlink "$HOME/.local/state/dots/current")
 if DOTS_THEME_TEST_PRECREATE_GENERATION=1 "$ROOT/bin/dots-theme-set" tokyo-night >/dev/null 2>&1; then
