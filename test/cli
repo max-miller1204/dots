@@ -93,7 +93,7 @@ cat >"$tmpbin/dots-semicolon-probe" <<'PROBE'
 exit 0
 PROBE
 chmod +x "$tmpbin/dots-semicolon-probe"
-cp "$ROOT/bin/dots" "$tmpbin/dots"
+cp "$ROOT/bin/dots" "$ROOT/bin/dots-path-resolve" "$tmpbin/"
 out=$(DOTS_PATH="${tmpbin%/bin}" "$tmpbin/dots" semicolon probe --help)
 assert_contains "$out" "dots semicolon probe one; echo done" "single ';' stays inside one example"
 assert_contains "$out" "dots semicolon probe two" "';;' still separates examples"
@@ -152,14 +152,14 @@ printf '#!/usr/bin/env bash\necho canonical-router\n' >"$canonical_probe/bin/dot
 chmod +x "$canonical_probe/bin/dots-version" "$canonical_probe/bin/dots"
 cp "$ROOT/bin/dots-version" "$ROOT/bin/dots-path-resolve" "$ROOT/bin/dots" "$obsolete_probe/bin/"
 printf '%s\n' "$canonical_probe" >"$HOME/.config/dots/path"
-[[ $(env -u DOTS_PATH "$obsolete_probe/bin/dots-version") == "canonical-code" ]] || fail "direct stale command did not delegate to canonical checkout"
-[[ $(env -u DOTS_PATH "$obsolete_probe/bin/dots" version) == "canonical-router" ]] || fail "stale router did not delegate to canonical checkout"
+[[ $(DOTS_PATH="$obsolete_probe" "$obsolete_probe/bin/dots-version") == "canonical-code" ]] || fail "direct stale command did not delegate to canonical checkout"
+[[ $(DOTS_PATH="$obsolete_probe" "$obsolete_probe/bin/dots" version) == "canonical-router" ]] || fail "stale router did not delegate to canonical checkout"
 for delegated_command in dots-hook dots-pkg-add dots-pkg-drop dots-theme-current dots-done \
   dots-update-analyze-logs dots-update-requires-free-space dots-update-restart; do
   printf '#!/usr/bin/env bash\necho %s\n' "$delegated_command" >"$canonical_probe/bin/$delegated_command"
   chmod +x "$canonical_probe/bin/$delegated_command"
   cp "$ROOT/bin/$delegated_command" "$obsolete_probe/bin/$delegated_command"
-  [[ $(env -u DOTS_PATH "$obsolete_probe/bin/$delegated_command") == "$delegated_command" ]] ||
+  [[ $(DOTS_PATH="$obsolete_probe" "$obsolete_probe/bin/$delegated_command") == "$delegated_command" ]] ||
     fail "stale $delegated_command did not delegate to canonical checkout"
 done
 
@@ -259,15 +259,18 @@ assertions=$((assertions + 8))
 
 # Import and hook installation enforce their repository/HOME ownership roots.
 fake_repo="$SANDBOX/import-repo"
-mkdir -p "$fake_repo/install/helpers" "$fake_repo/config" "$SANDBOX/import-outside"
+mkdir -p "$fake_repo/install/helpers" "$fake_repo/config" "$fake_repo/bin" "$SANDBOX/import-outside"
 cp "$ROOT/install/helpers/files.sh" "$fake_repo/install/helpers/files.sh"
+cp "$ROOT/bin/dots-config-import" "$ROOT/bin/dots-path-resolve" "$fake_repo/bin/"
 ln -s "$SANDBOX/import-outside" "$fake_repo/config/nvim"
 mkdir -p "$HOME/.config/nvim"
 printf 'return {}\n' >"$HOME/.config/nvim/test.lua"
-if DOTS_PATH="$fake_repo" "$ROOT/bin/dots-config-import" nvim/test.lua >/dev/null 2>&1; then
+printf '%s\n' "$fake_repo" >"$HOME/.config/dots/path"
+if "$ROOT/bin/dots-config-import" nvim/test.lua >/dev/null 2>&1; then
   fail "config import accepted a symlinked repository parent"
 fi
 [[ ! -e "$SANDBOX/import-outside/test.lua" ]] || fail "config import wrote outside the repository"
+printf '%s\n' "$ROOT" >"$HOME/.config/dots/path"
 
 hook_source="$SANDBOX/safe-hook"
 printf '#!/usr/bin/env bash\n' >"$hook_source"
@@ -748,6 +751,7 @@ cp "$ROOT/bin/dots-migrate" "$ROOT/bin/dots-path-resolve" "$ROOT/bin/dots-ensure
   "$ROOT/bin/dots-update-restart" "$SANDBOX/repo/bin/"
 cp "$ROOT/install/helpers/files.sh" "$SANDBOX/repo/install/helpers/files.sh"
 echo 'echo "migration ran" > "$HOME/migration-proof"' >"$SANDBOX/repo/migrations/1700000000.sh"
+printf '%s\n' "$SANDBOX/repo" >"$HOME/.config/dots/path"
 
 mkdir -p "$DOTS_MIGRATION_STATE"
 printf 'external marker\n' >"$SANDBOX/external-migration-marker"
@@ -778,6 +782,7 @@ printf 'run\n' >>"$HOME/concurrent-migration-proof"
 sleep 0.2
 EOF
 concurrent_state="$HOME/.local/state/dots/concurrent-migrations"
+printf '%s\n' "$SANDBOX/concurrent-repo" >"$HOME/.config/dots/path"
 DOTS_PATH="$SANDBOX/concurrent-repo" DOTS_MIGRATION_STATE="$concurrent_state" \
   "$ROOT/bin/dots-migrate" >/dev/null &
 migrate_pid_a=$!
@@ -798,10 +803,12 @@ cp "$ROOT/bin/dots-migrate" "$ROOT/bin/dots-path-resolve" "$ROOT/bin/dots-ensure
 cp "$ROOT/install/helpers/files.sh" "$tab_repo/install/helpers/files.sh"
 printf 'printf tab-ran >"$HOME/tab-migration-proof"\n' >"$tab_repo/migrations/1700000002.sh"
 tab_state="$HOME/.local/state/dots/tab-migrations"
+printf '%s\n' "$tab_repo" >"$HOME/.config/dots/path"
 out=$(DOTS_PATH="$tab_repo" DOTS_MIGRATION_STATE="$tab_state" "$ROOT/bin/dots-migrate" --pending)
 assert_contains "$out" "1700000002.sh" "tab-path migration listed"
 DOTS_PATH="$tab_repo" DOTS_MIGRATION_STATE="$tab_state" "$ROOT/bin/dots-migrate" >/dev/null
 [[ $(cat "$HOME/tab-migration-proof") == "tab-ran" ]] || fail "tab-path migration did not execute"
+printf '%s\n' "$ROOT" >"$HOME/.config/dots/path"
 assertions=$((assertions + 1))
 
 # done markers

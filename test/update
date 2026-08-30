@@ -472,6 +472,20 @@ assert_contains "$out" "did not finish cleanly" "incomplete previous run reporte
 grep -q "hook said Update complete" "$HOME/.local/state/dots/update.log.prev" || fail "preserved transcript lost content"
 assertions=$((assertions + 6))
 
+cat >"$HOME/.config/dots/hooks/post-update" <<'EOF'
+update_pid=$(ps -o ppid= -p "$PPID")
+kill -KILL "$update_pid"
+EOF
+rc=0
+PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update" >/dev/null 2>&1 || rc=$?
+((rc != 0)) || fail "killed transcribed update unexpectedly succeeded"
+[[ ! -e "$HOME/.local/state/dots/update-terminal-status" ]] || fail "killed transcribed update published terminal status"
+rm "$HOME/.config/dots/hooks/post-update"
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update")
+assert_contains "$out" "did not finish cleanly" "killed transcribed update reported"
+[[ -f "$HOME/.local/state/dots/update.log.prev" ]] || fail "killed transcribed transcript not preserved"
+assertions=$((assertions + 4))
+
 # a deliberate guard abort marks its transcript and is not misreported as a
 # crash by the run after it
 rc=0

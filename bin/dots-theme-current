@@ -3,7 +3,7 @@
 # dots:summary=Show the active theme name
 
 SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-DOTS_PATH=${DOTS_PATH:-$("$SELF_DIR/dots-path-resolve")}
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd) || exit 1
 if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-theme-current" "$@"; fi
 

@@ -13,7 +13,7 @@
 set -o pipefail
 
 SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-DOTS_PATH=${DOTS_PATH:-$("$SELF_DIR/dots-path-resolve")} || exit 2
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve") || exit 2
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd) || exit 2
 if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
   exec "$DOTS_PATH/bin/dots-update-available" "$@"

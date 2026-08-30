@@ -6,7 +6,7 @@ Personal dotfiles for macOS, Ubuntu, and WSL, built the way [omarchy](https://gi
 
 ## Install
 
-Prerequisites: git and [mise](https://mise.jdx.dev/getting-started.html). On macOS also [Homebrew](https://brew.sh) — the install uses it to set up modern bash (the system `/bin/bash` is frozen at 3.2, and it becomes your login shell) plus `flock` for locks; update and migration entry points can bootstrap a missing Homebrew `flock` for older installs. Dev tools still come only from mise.
+Prerequisites: git and [mise](https://mise.jdx.dev/getting-started.html). On macOS also [Homebrew](https://brew.sh) — the install uses it to set up modern bash (the system `/bin/bash` is frozen at 3.2, and it becomes your login shell) plus `flock` for locks. Runtime commands only diagnose a missing `flock`; re-run `dots install` to provision it through the sanctioned install path. Dev tools still come only from mise.
 
 ```bash
 git clone <your-remote> ~/dotfiles

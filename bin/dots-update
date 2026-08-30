@@ -16,7 +16,7 @@
 set -eo pipefail
 
 SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-DOTS_PATH=${DOTS_PATH:-$("$SELF_DIR/dots-path-resolve")}
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
 if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
   exec "$DOTS_PATH/bin/dots-update" "$@"
@@ -72,7 +72,8 @@ LOG_FILE="$STATE_DIR/update.log"
 PREV_LOG_FILE="$LOG_FILE.prev"
 PREV_NOTE_MARKER="$STATE_DIR/update-prev-incomplete"
 TERMINAL_STATUS_FILE="$STATE_DIR/update-terminal-status"
-for owned_state_file in "$LOG_FILE" "$PREV_LOG_FILE" "$PREV_NOTE_MARKER" "$TERMINAL_STATUS_FILE"; do
+ORDERLY_EXIT_FILE="$STATE_DIR/update-orderly-exit"
+for owned_state_file in "$LOG_FILE" "$PREV_LOG_FILE" "$PREV_NOTE_MARKER" "$TERMINAL_STATUS_FILE" "$ORDERLY_EXIT_FILE"; do
   dots_file_assert_safe_parents "$owned_state_file" "$HOME"
   if [[ -L $owned_state_file || ( -e $owned_state_file && ! -f $owned_state_file ) ]]; then
     echo "Refusing unsafe update state path: $owned_state_file" >&2
@@ -80,11 +81,13 @@ for owned_state_file in "$LOG_FILE" "$PREV_LOG_FILE" "$PREV_NOTE_MARKER" "$TERMI
   fi
 done
 
-mark_update_terminal() {
-  local status_source
+finish_update() {
+  local status=$1 status_source
   status_source=$(mktemp "${TMPDIR:-/tmp}/dots-update-status.XXXXXX")
-  dots_file_replace "$status_source" "$TERMINAL_STATUS_FILE" discard
+  printf '%s\n' "$status" >"$status_source"
+  dots_file_replace "$status_source" "$ORDERLY_EXIT_FILE" discard
   rm -f "$status_source"
+  exit "$status"
 }
 
 if [[ -z $transcribed ]]; then
@@ -121,6 +124,7 @@ if [[ -z $transcribed ]]; then
   # A status file only describes the transcript just handled. Remove it after
   # the old log is gone, so a death here cannot misclassify that old log.
   dots_file_remove "$TERMINAL_STATUS_FILE" discard
+  dots_file_remove "$ORDERLY_EXIT_FILE" discard
 
   # Re-exec under script(1) for a transcript recorded off a real pty (child
   # programs keep colors/progress, and the log is complete when script
@@ -153,7 +157,14 @@ if [[ -z $transcribed ]]; then
     inner="$SELF_DIR/dots-update"
     SHELL=$BASH script -qefc "${inner@Q} --transcribed" "$LOG_FILE" || script_rc=$?
   fi
-  mark_update_terminal
+  orderly_lines=()
+  if [[ -f $ORDERLY_EXIT_FILE ]]; then
+    mapfile -t orderly_lines <"$ORDERLY_EXIT_FILE"
+  fi
+  if ((${#orderly_lines[@]} == 1)) && [[ ${orderly_lines[0]} == "$script_rc" ]]; then
+    dots_file_replace "$ORDERLY_EXIT_FILE" "$TERMINAL_STATUS_FILE" discard
+  fi
+  dots_file_remove "$ORDERLY_EXIT_FILE" discard
   exit "$script_rc"
 fi
 
@@ -171,7 +182,7 @@ trap 'exit 143' TERM
 
 abort_update() {
   echo "Update aborted."
-  exit "$1"
+  finish_update "$1"
 }
 
 echo "=== dots update: $(date) ==="
@@ -235,7 +246,7 @@ fi
 if ((migrate_rc != 0)); then
   echo "Update failed: migrations exited $migrate_rc."
   echo "Update incomplete."
-  exit "$migrate_rc"
+  finish_update "$migrate_rc"
 fi
 
 if ((${#degraded_steps[@]})); then
@@ -243,7 +254,8 @@ if ((${#degraded_steps[@]})); then
   echo "Update did not fully converge:" >&2
   printf '  - %s\n' "${degraded_steps[@]}" >&2
   echo "Update incomplete."
-  exit 2
+  finish_update 2
 fi
 
 echo "Update complete."
+finish_update 0
