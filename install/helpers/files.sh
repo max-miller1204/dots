@@ -182,11 +182,13 @@ dots_file_remove() {
 }
 
 dots_file_sync_owned_payload() {
-  local src=$1 dest=$2 marker=$3 label=$4 marker_source owned=""
+  local src=$1 dest=$2 marker=$3 label=$4
+  local precommit="$marker.precommit" marker_source precommit_source recovered_source owned=""
   local -a marker_lines=()
 
   dots_file_assert_safe_parents "$dest" "$HOME" || return 1
   dots_file_assert_safe_parents "$marker" "$HOME" || return 1
+  dots_file_assert_safe_parents "$precommit" "$HOME" || return 1
 
   if [[ -L $dest || ( -e $dest && ! -f $dest ) ]]; then
     echo "Refusing unsafe $label payload: $dest" >&2
@@ -195,6 +197,20 @@ dots_file_sync_owned_payload() {
   if [[ -L $marker || ( -e $marker && ! -f $marker ) ]]; then
     echo "Refusing unsafe $label ownership marker: $marker" >&2
     return 1
+  fi
+  if [[ -L $precommit || ( -e $precommit && ! -f $precommit ) ]]; then
+    echo "Refusing unsafe $label ownership precommit: $precommit" >&2
+    return 1
+  fi
+
+  if [[ -f $precommit ]]; then
+    IFS= read -r precommit_header <"$precommit" || true
+    if [[ $precommit_header != "dots-owned-theme-payload-precommit-v1" ]]; then
+      echo "Refusing invalid $label ownership precommit: $precommit" >&2
+      return 1
+    fi
+    recovered_source=$(mktemp "${TMPDIR:-/tmp}/dots-owned-recovery.XXXXXX") || return 1
+    tail -n +2 "$precommit" >"$recovered_source"
   fi
 
   if [[ -f $marker ]]; then
@@ -206,22 +222,63 @@ dots_file_sync_owned_payload() {
     owned=1
   fi
 
+  if [[ -z $owned && -n ${recovered_source:-} && -f $dest ]] && cmp -s "$recovered_source" "$dest"; then
+    marker_source=$(mktemp "${TMPDIR:-/tmp}/dots-owned-payload.XXXXXX") || {
+      rm -f "$recovered_source"
+      return 1
+    }
+    printf 'dots-owned-theme-payload-v1\n' >"$marker_source"
+    if ! dots_file_replace "$marker_source" "$marker" discard; then
+      rm -f "$marker_source" "$recovered_source"
+      return 1
+    fi
+    rm -f "$marker_source"
+    owned=1
+  fi
+
+  if [[ -n ${recovered_source:-} ]]; then
+    rm -f "$recovered_source"
+    recovered_source=""
+    dots_file_remove "$precommit" discard || return 1
+  fi
+
+  if [[ -n $owned ]]; then
+    dots_file_replace "$src" "$dest" discard || return 1
+    return 0
+  fi
+
   if [[ -f $dest && -z $owned ]] && ! cmp -s "$src" "$dest"; then
     echo "Refusing unowned $label payload: $dest" >&2
     return 1
   fi
 
-  if [[ -n $owned || ! -f $dest ]]; then
-    dots_file_replace "$src" "$dest" discard || return 1
+  precommit_source=$(mktemp "${TMPDIR:-/tmp}/dots-owned-precommit.XXXXXX") || return 1
+  {
+    printf 'dots-owned-theme-payload-precommit-v1\n'
+    cat "$src"
+  } >"$precommit_source"
+  if ! dots_file_replace "$precommit_source" "$precommit" discard; then
+    rm -f "$precommit_source"
+    return 1
+  fi
+  rm -f "$precommit_source"
+
+  if [[ ${DOTS_FILE_TEST_CRASH_AFTER_PAYLOAD_PRECOMMIT:-} == "1" ]]; then
+    kill -KILL "$$"
   fi
 
-  if [[ -z $owned ]]; then
-    marker_source=$(mktemp "${TMPDIR:-/tmp}/dots-owned-payload.XXXXXX") || return 1
-    printf 'dots-owned-theme-payload-v1\n' >"$marker_source"
-    if ! dots_file_replace "$marker_source" "$marker" discard; then
-      rm -f "$marker_source"
-      return 1
-    fi
-    rm -f "$marker_source"
+  dots_file_replace "$src" "$dest" discard || return 1
+
+  if [[ ${DOTS_FILE_TEST_CRASH_AFTER_PAYLOAD:-} == "1" ]]; then
+    kill -KILL "$$"
   fi
+
+  marker_source=$(mktemp "${TMPDIR:-/tmp}/dots-owned-payload.XXXXXX") || return 1
+  printf 'dots-owned-theme-payload-v1\n' >"$marker_source"
+  if ! dots_file_replace "$marker_source" "$marker" discard; then
+    rm -f "$marker_source"
+    return 1
+  fi
+  rm -f "$marker_source"
+  dots_file_remove "$precommit" discard
 }

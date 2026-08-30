@@ -338,6 +338,56 @@ backup_copy=$(find "$SANDBOX" -path '*/atomic-backup-dest.bak.*/original' -type 
 [[ -n $backup_copy && $(cat "$backup_copy") == "old backup value" ]] || fail "backup crash did not preserve backup copy"
 assertions=$((assertions + 5))
 
+cat >"$SANDBOX/sync-owned-payload" <<'EOF'
+#!/usr/bin/env bash
+source "$DOTS_FILES_HELPER"
+dots_file_sync_owned_payload "$OWNED_SRC" "$OWNED_DEST" "$OWNED_MARKER" "test theme"
+EOF
+chmod +x "$SANDBOX/sync-owned-payload"
+owned_src="$SANDBOX/owned-source"
+owned_dest="$SANDBOX/owned-destination"
+owned_marker="$SANDBOX/owned-destination.dots-owned"
+printf 'first payload\n' >"$owned_src"
+rc=0
+HOME="$HOME" DOTS_FILE_TEST_CRASH_AFTER_PAYLOAD=1 \
+  DOTS_FILES_HELPER="$ROOT/install/helpers/files.sh" \
+  OWNED_SRC="$owned_src" OWNED_DEST="$owned_dest" OWNED_MARKER="$owned_marker" \
+  bash -c '"$1" & child=$!; wait "$child"' bash "$SANDBOX/sync-owned-payload" \
+    >/dev/null 2>&1 || rc=$?
+((rc != 0)) || fail "owned payload failpoint did not terminate"
+[[ $(cat "$owned_dest") == "first payload" ]] || fail "owned payload interruption lost published bytes"
+[[ ! -e $owned_marker ]] || fail "owned payload interruption prematurely published ownership"
+[[ -f $owned_marker.precommit ]] || fail "owned payload interruption lost precommit evidence"
+printf 'second payload\n' >"$owned_src"
+HOME="$HOME" DOTS_FILES_HELPER="$ROOT/install/helpers/files.sh" \
+  OWNED_SRC="$owned_src" OWNED_DEST="$owned_dest" OWNED_MARKER="$owned_marker" \
+  "$SANDBOX/sync-owned-payload"
+[[ $(cat "$owned_dest") == "second payload" ]] || fail "owned payload recovery did not apply current bytes"
+[[ $(cat "$owned_marker") == "dots-owned-theme-payload-v1" ]] || fail "owned payload recovery did not publish ownership"
+[[ ! -e $owned_marker.precommit ]] || fail "owned payload recovery left precommit evidence"
+
+foreign_dest="$SANDBOX/foreign-owned-destination"
+foreign_marker="$SANDBOX/foreign-owned-destination.dots-owned"
+printf 'intended payload\n' >"$owned_src"
+rc=0
+HOME="$HOME" DOTS_FILE_TEST_CRASH_AFTER_PAYLOAD=1 \
+  DOTS_FILES_HELPER="$ROOT/install/helpers/files.sh" \
+  OWNED_SRC="$owned_src" OWNED_DEST="$foreign_dest" OWNED_MARKER="$foreign_marker" \
+  bash -c '"$1" & child=$!; wait "$child"' bash "$SANDBOX/sync-owned-payload" \
+    >/dev/null 2>&1 || rc=$?
+((rc != 0)) || fail "foreign replacement setup failpoint did not terminate"
+printf 'foreign replacement\n' >"$foreign_dest"
+printf 'later payload\n' >"$owned_src"
+if HOME="$HOME" DOTS_FILES_HELPER="$ROOT/install/helpers/files.sh" \
+  OWNED_SRC="$owned_src" OWNED_DEST="$foreign_dest" OWNED_MARKER="$foreign_marker" \
+  "$SANDBOX/sync-owned-payload" >/dev/null 2>&1; then
+  fail "owned payload recovery claimed foreign replacement bytes"
+fi
+[[ $(cat "$foreign_dest") == "foreign replacement" ]] || fail "owned payload recovery altered foreign replacement"
+[[ ! -e $foreign_marker ]] || fail "owned payload recovery marked foreign replacement"
+[[ ! -e $foreign_marker.precommit ]] || fail "owned payload recovery retained stale precommit evidence"
+assertions=$((assertions + 12))
+
 # Multiple replacements produce distinct backups even within one second.
 printf '# edit one\n' >>"$HOME/.config/git/config"
 "$ROOT/bin/dots-refresh-config" git/config >/dev/null
