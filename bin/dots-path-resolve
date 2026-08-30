@@ -5,15 +5,6 @@
 
 set -eo pipefail
 
-if [[ -n ${DOTS_PATH:-} ]]; then
-  if [[ $DOTS_PATH == *$'\n'* || $DOTS_PATH == *:* ]]; then
-    echo "Invalid DOTS_PATH value" >&2
-    exit 1
-  fi
-  printf '%s\n' "$DOTS_PATH"
-  exit 0
-fi
-
 path_file="$HOME/.config/dots/path"
 if [[ ( -e $path_file || -L $path_file ) && ( -L $path_file || ! -f $path_file ) ]]; then
   echo "Refusing non-regular checkout path file: $path_file" >&2
@@ -26,6 +17,12 @@ if [[ -f $path_file ]]; then
     exit 1
   fi
   printf '%s\n' "${configured_lines[0]}"
+elif [[ -n ${DOTS_PATH:-} ]]; then
+  if [[ $DOTS_PATH == *$'\n'* || $DOTS_PATH == *:* ]]; then
+    echo "Invalid DOTS_PATH value" >&2
+    exit 1
+  fi
+  printf '%s\n' "$DOTS_PATH"
 else
   self_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
   cd -- "$self_dir/.."

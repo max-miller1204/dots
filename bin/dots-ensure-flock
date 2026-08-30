@@ -7,24 +7,9 @@ set -eo pipefail
 
 command -v flock >/dev/null 2>&1 && exit 0
 
-brew_cmd=""
 if [[ $(uname -s) == "Darwin" ]]; then
-  if command -v brew >/dev/null 2>&1; then
-    brew_cmd=$(command -v brew)
-  elif [[ -x /opt/homebrew/bin/brew ]]; then
-    brew_cmd=/opt/homebrew/bin/brew
-  elif [[ -x /usr/local/bin/brew ]]; then
-    brew_cmd=/usr/local/bin/brew
-  fi
+  echo "flock(1) is required. Re-run dots install on macOS, or run: brew install flock" >&2
+else
+  echo "flock(1) is required. Install your distribution's util-linux package." >&2
 fi
-if [[ -n $brew_cmd ]]; then
-  echo "Installing flock with Homebrew..."
-  "$brew_cmd" install flock
-  PATH="${brew_cmd%/*}:$PATH"
-  export PATH
-fi
-
-if ! command -v flock >/dev/null 2>&1; then
-  echo "flock(1) is required. On macOS install Homebrew, then run: brew install flock" >&2
-  exit 1
-fi
+exit 1

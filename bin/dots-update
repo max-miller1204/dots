@@ -10,8 +10,8 @@
 # Three exec stages: acquire the flock'd fd (dots-update-lock), re-exec
 # under script(1) so the run is recorded on a real pty, then run the
 # pipeline (--transcribed marks the innermost stage; it is honored only
-# when the lock sentinel names our direct parent — the script(1) stage —
-# so hooks, migrations, and their descendants cannot re-enter with it).
+# while the verified lock fd is still inherited, before the pipeline closes
+# it so hooks, migrations, and their descendants cannot re-enter with it).
 
 set -eo pipefail
 
@@ -46,12 +46,11 @@ update_lock_fd_valid() {
   flock -n 9
 }
 
-# The sentinel is the lock holder's PID, which script(1) inherits through
-# the exec chain — so the transcribed stage is exactly the process whose
-# parent carries it. An exported copy reaching hooks or daemons they leave
-# behind cannot equal the caller's own $PPID.
+# The transcribed stage must inherit both the lock sentinel and the verified
+# locked fd. The fd is closed immediately below, so exported state reaching
+# hooks or daemons cannot authorize another transcribed stage.
 transcribed=""
-if [[ ${1:-} == "--transcribed" && ${DOTS_UPDATE_LOCK_PID:-} == "$PPID" ]] && update_lock_fd_valid; then
+if [[ ${1:-} == "--transcribed" && -n ${DOTS_UPDATE_LOCK_PID:-} ]] && update_lock_fd_valid; then
   transcribed=1
   shift
 fi
@@ -80,6 +79,13 @@ for owned_state_file in "$LOG_FILE" "$PREV_LOG_FILE" "$PREV_NOTE_MARKER" "$TERMI
     exit 1
   fi
 done
+
+mark_update_terminal() {
+  local status_source
+  status_source=$(mktemp "${TMPDIR:-/tmp}/dots-update-status.XXXXXX")
+  dots_file_replace "$status_source" "$TERMINAL_STATUS_FILE" discard
+  rm -f "$status_source"
+}
 
 if [[ -z $transcribed ]]; then
   # Stage 1: serialize with any other running update. Stage 2 may only run
@@ -140,12 +146,15 @@ if [[ -z $transcribed ]]; then
   # trailing args and propagates its exit status by default; util-linux
   # needs -e for the status and -c with a command string, which it hands
   # to $SHELL — pinned to the running bash so the quoting always parses.
+  script_rc=0
   if [[ $(uname -s) == "Darwin" ]]; then
-    exec script -qF "$LOG_FILE" "$SELF_DIR/dots-update" --transcribed
+    script -qF "$LOG_FILE" "$SELF_DIR/dots-update" --transcribed || script_rc=$?
   else
     inner="$SELF_DIR/dots-update"
-    SHELL=$BASH exec script -qefc "${inner@Q} --transcribed" "$LOG_FILE"
+    SHELL=$BASH script -qefc "${inner@Q} --transcribed" "$LOG_FILE" || script_rc=$?
   fi
+  mark_update_terminal
+  exit "$script_rc"
 fi
 
 # Stage 3 (locked + transcribed): the pipeline. The lock lives on fd 9 in
@@ -160,18 +169,8 @@ exec 9>&-
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-mark_update_terminal() {
-  local status_source
-  status_source=$(mktemp "${TMPDIR:-/tmp}/dots-update-status.XXXXXX")
-  dots_file_replace "$status_source" "$TERMINAL_STATUS_FILE" discard
-  rm -f "$status_source"
-}
-
-# A deliberate abort still marks the transcript as finished, so the next run
-# doesn't misreport it as a crash.
 abort_update() {
   echo "Update aborted."
-  mark_update_terminal
   exit "$1"
 }
 
@@ -236,7 +235,6 @@ fi
 if ((migrate_rc != 0)); then
   echo "Update failed: migrations exited $migrate_rc."
   echo "Update incomplete."
-  mark_update_terminal
   exit "$migrate_rc"
 fi
 
@@ -245,9 +243,7 @@ if ((${#degraded_steps[@]})); then
   echo "Update did not fully converge:" >&2
   printf '  - %s\n' "${degraded_steps[@]}" >&2
   echo "Update incomplete."
-  mark_update_terminal
   exit 2
 fi
 
 echo "Update complete."
-mark_update_terminal

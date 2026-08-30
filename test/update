@@ -20,8 +20,8 @@ echo "stub mise $*"
 EOF
 chmod +x "$SANDBOX/stub/mise"
 
-# A missing macOS flock can bootstrap itself before the lock or migration gate.
-flock_stub="$SANDBOX/flock-bootstrap-stub"
+# A missing macOS flock is diagnosed without mutating package state.
+flock_stub="$SANDBOX/flock-diagnostic-stub"
 mkdir -p "$flock_stub"
 ln -s "$(command -v bash)" "$flock_stub/bash"
 cat >"$flock_stub/uname" <<'EOF'
@@ -30,13 +30,14 @@ printf 'Darwin\n'
 EOF
 cat >"$flock_stub/brew" <<'EOF'
 #!/usr/bin/env bash
-[[ $* == "install flock" ]] || exit 1
-printf '#!/usr/bin/env bash\nexit 0\n' >"${0%/*}/flock"
-/bin/chmod +x "${0%/*}/flock"
+touch "${0%/*}/brew-called"
 EOF
 chmod +x "$flock_stub/uname" "$flock_stub/brew"
-PATH="$flock_stub" "$ROOT/bin/dots-ensure-flock" >/dev/null
-[[ -x "$flock_stub/flock" ]] || fail "flock bootstrap did not install the command"
+rc=0
+out=$(PATH="$flock_stub" "$ROOT/bin/dots-ensure-flock" 2>&1) || rc=$?
+((rc == 1)) || fail "missing flock diagnostic should exit 1 (got $rc)"
+assert_contains "$out" "dots install" "missing macOS flock has actionable guidance"
+[[ ! -e "$flock_stub/brew-called" ]] || fail "flock diagnostic invoked Homebrew"
 assertions=$((assertions + 1))
 
 # --- adoption migration: missing defaults are installed, user shell files are
@@ -356,13 +357,34 @@ assertions=$((assertions + 4))
 echo three >"$upstream/file"
 git_test -C "$upstream" commit -qam "c3"
 
+export DOTS_TEST_REAL_SCRIPT
+DOTS_TEST_REAL_SCRIPT=$(command -v script)
+cat >"$SANDBOX/stub/script" <<'EOF'
+#!/usr/bin/env bash
+rc=0
+"$DOTS_TEST_REAL_SCRIPT" "$@" || rc=$?
+if [[ ${1:-} == "-qF" ]]; then
+  transcript=$2
+else
+  transcript=${!#}
+fi
+if [[ -e $HOME/.local/state/dots/update-terminal-status ]]; then
+  echo "terminal sidecar published before recorder returned" >&2
+  exit 88
+fi
+printf 'recorder flush complete\n' >>"$transcript"
+exit "$rc"
+EOF
+chmod +x "$SANDBOX/stub/script"
 out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update")
 assert_contains "$out" "Update complete." "pipeline completes"
 assert_contains "$out" "stub mise install" "mise sync ran"
 [[ -f "$HOME/.local/state/dots/update.log" ]] || fail "update transcript missing"
 grep -q "Update complete." "$HOME/.local/state/dots/update.log" || fail "transcript incomplete"
+grep -q "recorder flush complete" "$HOME/.local/state/dots/update.log" || fail "terminal sidecar preceded recorder flush"
+[[ -f "$HOME/.local/state/dots/update-terminal-status" ]] || fail "recorder return omitted terminal sidecar"
 [[ $(git -C "$checkout" log --oneline -1) == *c3* ]] || fail "update did not pull the new commit"
-assertions=$((assertions + 3))
+assertions=$((assertions + 5))
 
 printf 'external restart\n' >"$SANDBOX/external-restart"
 ln -s "$SANDBOX/external-restart" "$HOME/.local/state/dots/restart-unsafe-required"
