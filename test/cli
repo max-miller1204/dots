@@ -135,13 +135,17 @@ out=$(env -u DOTS_PATH "$ROOT/bin/dots-theme-list")
 assert_contains "$out" "serialized-probe" "direct command resolved serialized checkout"
 env -u DOTS_PATH PATH=/usr/bin:/bin bash -c 'source "$1"; [[ $DOTS_PATH == "$2" ]]' \
   bash "$ROOT/default/bashrc" "$serialized_repo" || fail "Bash rc ignored serialized checkout"
-env -u DOTS_PATH PATH=/usr/bin:/bin zsh -c 'source "$1"; [[ $DOTS_PATH == "$2" ]]' \
-  zsh "$ROOT/default/zshrc" "$serialized_repo" || fail "Zsh rc ignored serialized checkout"
+if command -v zsh >/dev/null 2>&1; then
+  env -u DOTS_PATH PATH=/usr/bin:/bin zsh -c 'source "$1"; [[ $DOTS_PATH == "$2" ]]' \
+    zsh "$ROOT/default/zshrc" "$serialized_repo" || fail "Zsh rc ignored serialized checkout"
+fi
 stale_repo="$SANDBOX/stale checkout"
 env DOTS_PATH="$stale_repo" PATH=/usr/bin:/bin bash -c 'source "$1"; [[ $DOTS_PATH == "$2" ]]' \
   bash "$ROOT/default/bashrc" "$serialized_repo" || fail "Bash rc preferred inherited checkout over canonical path"
-env DOTS_PATH="$stale_repo" PATH=/usr/bin:/bin zsh -c 'source "$1"; [[ $DOTS_PATH == "$2" ]]' \
-  zsh "$ROOT/default/zshrc" "$serialized_repo" || fail "Zsh rc preferred inherited checkout over canonical path"
+if command -v zsh >/dev/null 2>&1; then
+  env DOTS_PATH="$stale_repo" PATH=/usr/bin:/bin zsh -c 'source "$1"; [[ $DOTS_PATH == "$2" ]]' \
+    zsh "$ROOT/default/zshrc" "$serialized_repo" || fail "Zsh rc preferred inherited checkout over canonical path"
+fi
 [[ $(DOTS_PATH="$stale_repo" "$ROOT/bin/dots-path-resolve") == "$serialized_repo" ]] ||
   fail "path resolver preferred inherited checkout over canonical path"
 assertions=$((assertions + 3))
@@ -152,8 +156,10 @@ fi
 printf '%s\n\n' "$serialized_repo" >"$HOME/.config/dots/path"
 env -u DOTS_PATH PATH=/usr/bin:/bin bash -c 'source "$1"; [[ $DOTS_PATH == "$HOME/dotfiles" ]]' \
   bash "$ROOT/default/bash/env-bootstrap" || fail "Bash bootstrap accepted a multiline checkout path"
-env -u DOTS_PATH PATH=/usr/bin:/bin zsh -c 'source "$1"; [[ $DOTS_PATH == "$HOME/dotfiles" ]]' \
-  zsh "$ROOT/default/bash/env-bootstrap" || fail "Zsh bootstrap accepted a multiline checkout path"
+if command -v zsh >/dev/null 2>&1; then
+  env -u DOTS_PATH PATH=/usr/bin:/bin zsh -c 'source "$1"; [[ $DOTS_PATH == "$HOME/dotfiles" ]]' \
+    zsh "$ROOT/default/bash/env-bootstrap" || fail "Zsh bootstrap accepted a multiline checkout path"
+fi
 # A command reached through an older checkout delegates execution to the
 # serialized checkout instead of mixing stale code with canonical data.
 canonical_probe="$SANDBOX/canonical-probe"
@@ -195,7 +201,9 @@ mkfifo "$HOME/.config/dots/path"
 if env -u DOTS_PATH "$ROOT/bin/dots-path-resolve" >/dev/null 2>&1; then
   fail "path resolver accepted a FIFO path file"
 fi
-for startup_shell in bash zsh; do
+startup_shells=(bash)
+command -v zsh >/dev/null 2>&1 && startup_shells+=(zsh)
+for startup_shell in "${startup_shells[@]}"; do
   env -u DOTS_PATH PATH=/usr/bin:/bin "$startup_shell" -c 'source "$1"' \
     "$startup_shell" "$ROOT/default/bash/env-bootstrap" >/dev/null 2>&1 &
   startup_pid=$!
