@@ -1,3 +1,6 @@
+[settings]
+minimum_release_age = "0s"
+
 [tools]
 bat = "latest"
 claude = "latest"
