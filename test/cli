@@ -607,6 +607,13 @@ if "$ROOT/bin/dots-theme-set-templates" "$dangling_render" >/dev/null 2>&1; then
 fi
 [[ ! -e $dangling_render_target ]] || fail "theme renderer created a dangling symlink target"
 [[ -L $dangling_render/obsidian.css ]] || fail "theme renderer replaced a dangling output symlink"
+nonregular_render="$SANDBOX/nonregular-render"
+mkdir -p "$nonregular_render/claude.json"
+cp "$ROOT/themes/tokyo-night/colors.toml" "$nonregular_render/colors.toml"
+if "$ROOT/bin/dots-theme-set-templates" "$nonregular_render" >/dev/null 2>&1; then
+  fail "theme renderer accepted a non-regular output override"
+fi
+[[ -d $nonregular_render/claude.json ]] || fail "theme renderer replaced a non-regular output override"
 linked_theme_home="$SANDBOX/linked-theme-state-home"
 linked_theme_target="$SANDBOX/linked-theme-state-target"
 mkdir -p "$linked_theme_home" "$linked_theme_target"
@@ -644,7 +651,7 @@ if HOME="$invalid_recovery_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-set" to
   fail "theme set removed an invalid recovery symlink"
 fi
 [[ -L "$invalid_recovery_home/.local/state/dots/.theme-current-recovery" ]] || fail "invalid recovery symlink was removed"
-assertions=$((assertions + 17))
+assertions=$((assertions + 19))
 
 # Sed metacharacters in trusted local palette values render as literal data.
 mkdir -p "$HOME/.config/dots/themes/escaped" "$HOME/.config/dots/themed"

@@ -1,0 +1,21 @@
+# This file is yours. It is seeded from ~/dotfiles/default/bashrc at install
+# (with a backup of any previous version) and never touched by `dots update`.
+# `dots reinstall configs` resets it to the shipped default.
+
+[ -f "$HOME/.config/dots/dots.conf" ] && . "$HOME/.config/dots/dots.conf"
+. "${DOTS_PATH:-$HOME/dotfiles}/default/bash/env-bootstrap"
+
+# Tool activation
+command -v mise >/dev/null 2>&1 && eval "$(mise activate bash)"
+
+# Aliases (BSD ls on macOS, GNU ls on Linux/WSL)
+if [ "$(uname -s)" = "Darwin" ]; then
+  alias ls='ls -G'
+else
+  alias ls='ls --color=auto'
+fi
+alias ll='ls -lah'
+alias g='git'
+
+# Prompt: directory in blue, $ in plain
+PS1='\[\e[34m\]\W\[\e[0m\] \$ '

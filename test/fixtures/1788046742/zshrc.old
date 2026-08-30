@@ -1,0 +1,16 @@
+# This file is yours. It is seeded from ~/dotfiles/default/zshrc at install
+# (with a backup of any previous version) and never touched by `dots update`.
+# `dots reinstall configs` resets it to the shipped default.
+
+[ -f "$HOME/.config/dots/dots.conf" ] && . "$HOME/.config/dots/dots.conf"
+. "${DOTS_PATH:-$HOME/dotfiles}/default/bash/env-bootstrap"
+
+command -v mise >/dev/null 2>&1 && eval "$(mise activate zsh)"
+
+if [ "$(uname -s)" = "Darwin" ]; then
+  alias ls='ls -G'
+else
+  alias ls='ls --color=auto'
+fi
+alias ll='ls -lah'
+alias g='git'

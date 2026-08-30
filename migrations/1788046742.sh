@@ -157,11 +157,11 @@ for shell_name in bash zsh; do
   old=${!old_var}
   shipped="$DOTS_PATH/default/${shell_name}rc"
 
-  if [[ -f $live && -f $shipped ]] && cmp -s "$live" "$old"; then
+  if [[ -f $live && ! -L $live && -f $shipped ]] && cmp -s "$live" "$old"; then
     dots_file_replace "$shipped" "$live" backup
     shell_changed=1
     echo "Updated stock ~/.${shell_name}rc for modular shell defaults (backup at $DOTS_FILE_BACKUP)."
-  elif [[ -f $live && -f $shipped ]] && ! cmp -s "$live" "$shipped"; then
+  elif [[ -f $live && ! -L $live && -f $shipped ]] && ! cmp -s "$live" "$shipped"; then
     echo "Left customized ~/.${shell_name}rc unchanged; compare it with $shipped" >&2
   fi
 done

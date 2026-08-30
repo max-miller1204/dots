@@ -53,6 +53,23 @@ migration_out=$(PATH="$SANDBOX/stub:$PATH" \
 assert_contains "$migration_out" "stub mise use --global" "migration merges mise tool manifest"
 assertions=$((assertions + 4))
 
+adoption_fixtures="$ROOT/test/fixtures/1788046742"
+adoption_link_home="$SANDBOX/adoption-link-home"
+adoption_link_targets="$SANDBOX/adoption-link-targets"
+mkdir -p "$adoption_link_home" "$adoption_link_targets"
+cp "$adoption_fixtures/bashrc.old" "$adoption_link_targets/bashrc"
+cp "$adoption_fixtures/zshrc.old" "$adoption_link_targets/zshrc"
+ln -s "$adoption_link_targets/bashrc" "$adoption_link_home/.bashrc"
+ln -s "$adoption_link_targets/zshrc" "$adoption_link_home/.zshrc"
+HOME="$adoption_link_home" PATH="$SANDBOX/stub:$PATH" \
+  GIT_CONFIG_GLOBAL="$adoption_link_home/.config/git/config" \
+  DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788046742.sh" >/dev/null
+[[ -L $adoption_link_home/.bashrc ]] || fail "adoption migration replaced a stock bashrc symlink"
+[[ -L $adoption_link_home/.zshrc ]] || fail "adoption migration replaced a stock zshrc symlink"
+cmp -s "$adoption_link_targets/bashrc" "$adoption_fixtures/bashrc.old" || fail "adoption migration altered a bashrc symlink target"
+cmp -s "$adoption_link_targets/zshrc" "$adoption_fixtures/zshrc.old" || fail "adoption migration altered a zshrc symlink target"
+assertions=$((assertions + 4))
+
 # A failed manifest merge keeps the adoption migration pending for the next
 # update instead of recording a partially applied migration as complete.
 retry_repo="$SANDBOX/retry-repo"
@@ -136,7 +153,23 @@ printf '# custom zsh\n' >>"$custom_home/.zshrc"
 HOME="$custom_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788051792.sh" >/dev/null
 [[ $(tail -1 "$custom_home/.bashrc") == "# custom bash" ]] || fail "final migration replaced customized bashrc"
 [[ $(tail -1 "$custom_home/.zshrc") == "# custom zsh" ]] || fail "final migration replaced customized zshrc"
-assertions=$((assertions + 6))
+link_home="$SANDBOX/link-final-migration-home"
+link_targets="$SANDBOX/link-final-migration-targets"
+mkdir -p "$link_home/.config" "$link_targets"
+cp "$final_fixtures/bashrc.41d3229" "$link_targets/bashrc"
+cp "$final_fixtures/zshrc.41d3229" "$link_targets/zshrc"
+cp "$final_fixtures/starship.old" "$link_targets/starship.toml"
+ln -s "$link_targets/bashrc" "$link_home/.bashrc"
+ln -s "$link_targets/zshrc" "$link_home/.zshrc"
+ln -s "$link_targets/starship.toml" "$link_home/.config/starship.toml"
+HOME="$link_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788051792.sh" >/dev/null
+[[ -L $link_home/.bashrc ]] || fail "final migration replaced a stock bashrc symlink"
+[[ -L $link_home/.zshrc ]] || fail "final migration replaced a stock zshrc symlink"
+[[ -L $link_home/.config/starship.toml ]] || fail "final migration replaced a stock Starship symlink"
+cmp -s "$link_targets/bashrc" "$final_fixtures/bashrc.41d3229" || fail "final migration altered a bashrc symlink target"
+cmp -s "$link_targets/zshrc" "$final_fixtures/zshrc.41d3229" || fail "final migration altered a zshrc symlink target"
+cmp -s "$link_targets/starship.toml" "$final_fixtures/starship.old" || fail "final migration altered a Starship symlink target"
+assertions=$((assertions + 12))
 
 # --- free-space guard
 DOTS_UPDATE_MIN_FREE_KB=1 "$ROOT/bin/dots-update-requires-free-space" ||

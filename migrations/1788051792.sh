@@ -248,7 +248,7 @@ deleted    = ""
 EOF
 
 shell_changed=""
-if [[ -f $HOME/.bashrc ]] &&
+if [[ -f $HOME/.bashrc && ! -L $HOME/.bashrc ]] &&
   { cmp -s "$HOME/.bashrc" "$tmp_dir/bashrc.old" ||
     cmp -s "$HOME/.bashrc" "$tmp_dir/bashrc.intermediate" ||
     cmp -s "$HOME/.bashrc" "$tmp_dir/bashrc.41d3229"; }; then
@@ -256,7 +256,7 @@ if [[ -f $HOME/.bashrc ]] &&
   echo "Updated stock ~/.bashrc (backup at $DOTS_FILE_BACKUP)"
   shell_changed=1
 fi
-if [[ -f $HOME/.zshrc ]] &&
+if [[ -f $HOME/.zshrc && ! -L $HOME/.zshrc ]] &&
   { cmp -s "$HOME/.zshrc" "$tmp_dir/zshrc.old" ||
     cmp -s "$HOME/.zshrc" "$tmp_dir/zshrc.intermediate" ||
     cmp -s "$HOME/.zshrc" "$tmp_dir/zshrc.41d3229"; }; then
@@ -266,7 +266,7 @@ if [[ -f $HOME/.zshrc ]] &&
 fi
 
 starship_path="$HOME/.config/starship.toml"
-if [[ -f $starship_path ]] && cmp -s "$starship_path" "$tmp_dir/starship.old"; then
+if [[ -f $starship_path && ! -L $starship_path ]] && cmp -s "$starship_path" "$tmp_dir/starship.old"; then
   dots_file_replace "$DOTS_PATH/config/starship.toml" "$starship_path" backup
   echo "Updated stock Starship glyphs (backup at $DOTS_FILE_BACKUP)"
 fi

@@ -87,11 +87,11 @@ fi
 render() { # render <template> — output lands in staging, named without .tpl
   local tpl=$1 out
   out="$staging/$(basename "${tpl%.tpl}")"
-  if [[ -L $out ]]; then
-    echo "Refusing symlinked rendered output: $out" >&2
+  if [[ -L $out || ( -e $out && ! -f $out ) ]]; then
+    echo "Refusing non-regular rendered output: $out" >&2
     return 1
   fi
-  [[ -e $out ]] && return 0
+  [[ -f $out ]] && return 0
   sed -f "$sedfile" "$tpl" >"$out"
   if LC_ALL=C grep -Eq '\{\{[[:space:]]*[A-Za-z0-9_]+[[:space:]]*\}\}' "$out"; then
     echo "Unresolved theme placeholder in rendered output: $out" >&2
