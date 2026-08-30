@@ -20,16 +20,42 @@ if (($# < 1)); then
   exit 1
 fi
 
-if ! command -v flock >/dev/null 2>&1; then
-  echo "flock(1) not found. On macOS: brew install flock (dots install handles this)." >&2
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
+  exec "$DOTS_PATH/bin/dots-update-lock" "$@"
+fi
+source "$DOTS_PATH/install/helpers/files.sh"
+"$SELF_DIR/dots-ensure-flock"
+
+LOCK="${DOTS_UPDATE_LOCK:-$HOME/.local/state/dots/update.lock}"
+dots_file_assert_safe_parents "$LOCK" "$HOME"
+mkdir -p "${LOCK%/*}"
+dots_file_assert_safe_parents "$LOCK" "$HOME"
+if [[ -L $LOCK || ( -e $LOCK && ! -f $LOCK ) ]]; then
+  echo "Refusing unsafe update lock path: $LOCK" >&2
   exit 1
 fi
 
-LOCK="${DOTS_UPDATE_LOCK:-$HOME/.local/state/dots/update.lock}"
-mkdir -p "$(dirname "$LOCK")"
-
-# Append mode, so opening never clobbers a live holder's pid note.
+# Append mode does not alter a path that is swapped during open. Validate the
+# opened inode against the path before locking or writing through the fd.
 exec 9>>"$LOCK"
+if [[ -L $LOCK || ! -f $LOCK ]]; then
+  echo "Update lock path changed during open: $LOCK" >&2
+  exit 1
+fi
+if [[ $(uname -s) == "Darwin" ]]; then
+  lock_id=$(stat -f '%i' "$LOCK")
+  fd_id=$(stat -f '%i' /dev/fd/9)
+else
+  lock_id=$(stat -Lc '%d:%i' "$LOCK")
+  fd_id=$(stat -Lc '%d:%i' /proc/self/fd/9)
+fi
+if [[ $lock_id != "$fd_id" ]]; then
+  echo "Update lock path changed during open: $LOCK" >&2
+  exit 1
+fi
 
 # -E gives contention its own exit code, so a real flock(2) failure (an
 # unsupported filesystem, say) is not misreported as a running update.
@@ -37,7 +63,7 @@ rc=0
 flock -n -E 99 9 || rc=$?
 if ((rc == 99)); then
   holder=""
-  { read -r holder <"$LOCK"; } 2>/dev/null || true
+  holder=$(tail -n 1 "$LOCK" 2>/dev/null) || true
   holder=${holder//[^0-9]/}
   echo "Another dots update is already running${holder:+ (pid $holder)}." >&2
   exit 1
@@ -46,9 +72,8 @@ elif ((rc != 0)); then
   exit 1
 fi
 
-# Holder breadcrumb for the refusal message above — informational only; the
-# kernel, not this file, owns the lock.
-: >"$LOCK"
+# Holder breadcrumb for the refusal message above — informational only. Append
+# through the verified fd; never reopen the pathname after validation.
 printf '%s\n' "$$" >&9
 
 export DOTS_UPDATE_LOCK_PID=$$

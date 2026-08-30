@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+
+# dots:summary=Sync the generated theme to Pi
+# dots:args=[--activate]
+# dots:hidden=true
+
+set -euo pipefail
+
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-theme-sync-pi" "$@"; fi
+source "$DOTS_PATH/install/helpers/files.sh"
+activate=false
+case ${1:-} in
+  "") ;;
+  --activate) activate=true ;;
+  *)
+    echo "Usage: dots-theme-sync-pi [--activate]" >&2
+    exit 1
+    ;;
+esac
+(( $# <= 1 )) || {
+  echo "Usage: dots-theme-sync-pi [--activate]" >&2
+  exit 1
+}
+
+source_path="$HOME/.local/state/dots/current/theme/pi.json"
+config_dir="${PI_AGENT_DIR:-$HOME/.pi/agent}"
+theme_dir="$config_dir/themes"
+theme_path="$theme_dir/dots-system.json"
+ownership_path="$theme_path.dots-owned"
+settings_path="$config_dir/settings.json"
+
+if [[ -L $source_path ]]; then
+  echo "Refusing symlinked Pi theme source: $source_path" >&2
+  exit 1
+fi
+if [[ ! -f $source_path ]]; then
+  $activate && echo "Cannot activate Pi theme: generated payload is missing: $source_path" >&2
+  $activate && exit 1
+  exit 0
+fi
+if ! "$SELF_DIR/dots-theme-source-valid" pi.json; then
+  echo "Refusing unowned Pi theme source: $source_path" >&2
+  exit 1
+fi
+if ! $activate && [[ ! -d $config_dir ]]; then
+  exit 0
+fi
+dots_file_assert_safe_parents "$theme_path" "$HOME"
+dots_file_assert_safe_parents "$ownership_path" "$HOME"
+dots_file_assert_safe_parents "$settings_path" "$HOME"
+
+mkdir -p "$theme_dir"
+dots_file_sync_owned_payload "$source_path" "$theme_path" "$ownership_path" "Pi theme"
+
+$activate || exit 0
+
+tmp_settings=""
+cleanup() {
+  [[ -z $tmp_settings ]] || rm -f "$tmp_settings"
+}
+trap cleanup EXIT
+
+if ! "$DOTS_PATH/bin/dots-cmd-present" jq; then
+  echo "Cannot activate Pi theme: jq is not installed" >&2
+  exit 1
+fi
+
+if [[ -L $settings_path ]]; then
+  echo "Refusing Pi settings symlink: $settings_path" >&2
+  exit 1
+fi
+tmp_settings=$(mktemp "${TMPDIR:-/tmp}/dots-pi-settings.XXXXXX")
+if [[ -f $settings_path ]]; then
+  jq '.theme = "dots-system"' "$settings_path" >"$tmp_settings"
+else
+  jq -n '{theme: "dots-system"}' >"$tmp_settings"
+fi
+dots_file_replace "$tmp_settings" "$settings_path" discard
+rm -f "$tmp_settings"
+tmp_settings=""

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+# dots:summary=Sync the generated theme to Neovim
+# dots:hidden=true
+
+set -euo pipefail
+
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-theme-sync-neovim" "$@"; fi
+source "$DOTS_PATH/install/helpers/files.sh"
+
+source_path="$HOME/.local/state/dots/current/theme/neovim.lua"
+config_dir="${NVIM_CONFIG_DIR:-$HOME/.config/nvim}"
+plugin_dir="$config_dir/lua/plugins"
+plugin_path="$plugin_dir/dots-system.lua"
+
+[[ -L $source_path ]] && { echo "Refusing symlinked Neovim theme source: $source_path" >&2; exit 1; }
+[[ -d $config_dir && -f $source_path ]] || exit 0
+"$SELF_DIR/dots-theme-source-valid" neovim.lua || {
+  echo "Refusing unowned Neovim theme source: $source_path" >&2
+  exit 1
+}
+dots_file_assert_safe_parents "$plugin_path" "$HOME"
+
+mkdir -p "$plugin_dir"
+if [[ -e $plugin_path || -L $plugin_path ]]; then
+  if [[ ! -L $plugin_path || $(readlink "$plugin_path") != "$source_path" ]]; then
+    echo "Skipping Neovim theme link: $plugin_path is not dots-owned" >&2
+    exit 0
+  fi
+else
+  ln -s "$source_path" "$plugin_path"
+fi

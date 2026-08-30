@@ -9,6 +9,11 @@
 
 set -o pipefail
 
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd) || exit 1
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-update-requires-free-space" "$@"; fi
+
 [[ ${DOTS_UPDATE_FORCE:-} == "1" ]] && exit 0
 
 min_free_kb=${DOTS_UPDATE_MIN_FREE_KB:-1048576}

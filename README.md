@@ -6,7 +6,7 @@ Personal dotfiles for macOS, Ubuntu, and WSL, built the way [omarchy](https://gi
 
 ## Install
 
-Prerequisites: git and [mise](https://mise.jdx.dev/getting-started.html). On macOS also [Homebrew](https://brew.sh) — the install uses it to set up modern bash (the system `/bin/bash` is frozen at 3.2, and it becomes your login shell) plus `flock` for the update lock; dev tools still come only from mise.
+Prerequisites: git and [mise](https://mise.jdx.dev/getting-started.html). On macOS also [Homebrew](https://brew.sh) — the install uses it to set up modern bash (the system `/bin/bash` is frozen at 3.2, and it becomes your login shell) plus `flock` for locks. Runtime commands only diagnose a missing `flock`; re-run `dots install` to provision it through the sanctioned install path. Dev tools still come only from mise.
 
 ```bash
 git clone <your-remote> ~/dotfiles
@@ -21,7 +21,7 @@ The repo is the source of truth for *defaults*; your live files are yours.
 
 1. **Seed** — `dots install` copies `config/**` into `~/.config/**` (backing up anything it replaces) and seeds `~/.bashrc` / `~/.zshrc` from `default/`.
 2. **Edit freely** — the copies in `~/.config` belong to you. Nothing overwrites them behind your back.
-3. **Resync deliberately** — `dots refresh config <path>` re-copies one file (with a timestamped backup and a diff), `dots reinstall configs` clobbers everything back to defaults, and `dots config import <path>` adopts a live file back into the repo.
+3. **Resync deliberately** — `dots refresh config <path>` re-copies one file (with a unique backup and a diff), `dots reinstall configs` clobbers everything back to defaults, and `dots config import <path>` adopts a live file back into the repo. Replacement never follows destination or parent-directory symlinks into another tree, and both backup and discard modes keep the old live entry present until the atomic publication step.
 
 ## Commands
 
@@ -51,11 +51,13 @@ dots pkg add ripgrep              # mise use --global ripgrep
 dots config import mise/config.toml   # persist the manifest in the repo
 ```
 
-Then commit, and `dots update` on your other machines picks it up.
+Then commit, and `dots update` on your other machines picks it up. Terminal and Starship defaults use platform-font glyphs only; dots does not silently install or require a Nerd Font.
 
 ## Themes
 
-`themes/<name>/colors.toml` defines a palette; `default/themed/*.tpl` are templates with `{{ key }}` placeholders (`{{ accent }}`, `{{ accent_strip }}`, `{{ accent_rgb }}`). `dots theme set <name>` stages the theme, overlays your files from `~/.config/dots/themes/<name>/`, renders the templates, atomically swaps the result into `~/.local/state/dots/current/theme/`, and fires the `theme-set` hook.
+`themes/<name>/colors.toml` defines a palette; `default/themed/*.tpl` are templates with `{{ key }}` placeholders (`{{ accent }}`, `{{ accent_strip }}`, `{{ accent_rgb }`). The renderer accepts quoted, top-level palette values plus the derived `selection_background` and `selection_foreground` keys; it deliberately does not implement Omarchy's mix or gradient expressions.
+
+`dots theme set <name>` validates the identifier, takes an exclusive lock, builds a unique generation, overlays regular files from `~/.config/dots/themes/<name>/`, renders templates when the theme provides `colors.toml`, and atomically switches `~/.local/state/dots/current` to the complete generation. The immediately previous generation is retained for recovery. Theme source trees are trusted local inputs but may not contain symlinks; there is intentionally no remote-theme installer.
 
 Point app configs at the generated files, e.g. for ghostty:
 
@@ -63,15 +65,19 @@ Point app configs at the generated files, e.g. for ghostty:
 config-file = ~/.local/state/dots/current/theme/ghostty.conf
 ```
 
-Add your own machine-wide templates in `~/.config/dots/themed/*.tpl`; they shadow built-ins with the same output name. Hand-written files in a theme dir always win over templates. Palettes for tokyo-night and catppuccin are adapted from omarchy (MIT).
+Versioned synchronizers in `bin/` integrate apps before the separate user `theme-set` hook runs. They link btop as `dots-system.theme`, link the Neovim Lazy plugin as `dots-system.lua`, copy theme payloads for configured Pi and Claude installations, and refresh live tmux styles. Btop and Neovim replace only missing or demonstrably dots-owned links. Pi and Claude preserve unowned payloads unless their bytes match the active generated payload, in which case dots safely adopts them; dots-owned payload publication is recoverable after interruption. The generated `tmux.conf` is sourced by the base tmux config, so new servers inherit the active theme. The generated `obsidian.css` is available for an Obsidian CSS theme or snippet.
+
+Normal theme changes never take over Pi or Claude preferences. Activate the stable generated theme explicitly once with `dots theme sync pi --activate` or `dots theme sync claude --activate`; subsequent dots theme changes update the payload behind that stable name.
+
+Add your own machine-wide templates in `~/.config/dots/themed/*.tpl`; they shadow built-ins with the same output name. Hand-written regular files in a theme dir win over templates; symlinks and non-regular output occupants are rejected. Rendering also fails before publication if a supported `{{ key }}` placeholder remains unresolved, leaving the active generation unchanged. Shipped palettes, templates, and portable defaults adapted from omarchy retain its [MIT license](LICENSE.omarchy).
 
 ## Migrations
 
-One-time change on existing installs? Add `migrations/$(date +%s).sh` — idempotent, runs once per machine via `dots migrate` (called by `dots update`). Completion markers live in `~/.local/state/dots/migrations/`. Fresh installs mark all shipped migrations as already applied.
+One-time change on existing installs? Add `migrations/$(date +%s).sh` — idempotent, runs once per machine via `dots migrate` (called by `dots update`). Standalone migration runs are serialized before marker checks. Completion markers live in `~/.local/state/dots/migrations/`. Fresh installs mark all shipped migrations as already applied.
 
 ## Hooks
 
-Executable scripts in `~/.config/dots/hooks/<event>.d/` run on: `post-install`, `post-update`, and `theme-set` (theme name in `$1`). Sample files ship in `config/dots/hooks/`; drop the `.sample` suffix to activate one, or run `dots hook install <event> <script>`.
+Executable scripts in `~/.config/dots/hooks/<event>.d/` run on: `post-install`, `post-update`, and `theme-set` (theme name in `$1`). Sample files ship in `config/dots/hooks/`; drop the `.sample` suffix to activate one, or run `dots hook install <event> <script>`. Hook installation accepts lowercase hyphenated event names and refuses symlinked destination parents.
 
 ## Layout
 

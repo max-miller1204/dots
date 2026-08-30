@@ -12,7 +12,43 @@
 
 set -o pipefail
 
-DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve") || exit 2
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd) || exit 2
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
+  exec "$DOTS_PATH/bin/dots-update-available" "$@"
+fi
+source "$DOTS_PATH/install/helpers/files.sh"
+UPDATE_LOCK="${DOTS_UPDATE_LOCK:-$HOME/.local/state/dots/update.lock}"
+
+"$SELF_DIR/dots-ensure-flock" || exit 2
+dots_file_assert_safe_parents "$UPDATE_LOCK" "$HOME" || exit 2
+mkdir -p "${UPDATE_LOCK%/*}"
+dots_file_assert_safe_parents "$UPDATE_LOCK" "$HOME" || exit 2
+if [[ -L $UPDATE_LOCK || ( -e $UPDATE_LOCK && ! -f $UPDATE_LOCK ) ]]; then
+  echo "Cannot check updates with an unsafe lock path: $UPDATE_LOCK" >&2
+  exit 2
+fi
+exec 8>>"$UPDATE_LOCK"
+if [[ -L $UPDATE_LOCK || ! -f $UPDATE_LOCK ]]; then
+  echo "Update lock path changed during open: $UPDATE_LOCK" >&2
+  exit 2
+fi
+if [[ $(uname -s) == "Darwin" ]]; then
+  lock_id=$(stat -f '%i' "$UPDATE_LOCK")
+  fd_id=$(stat -f '%i' /dev/fd/8)
+else
+  lock_id=$(stat -Lc '%d:%i' "$UPDATE_LOCK")
+  fd_id=$(stat -Lc '%d:%i' /proc/self/fd/8)
+fi
+if [[ $lock_id != "$fd_id" ]]; then
+  echo "Update lock path changed during open: $UPDATE_LOCK" >&2
+  exit 2
+fi
+if ! flock -n 8; then
+  echo "Cannot check updates while dots update is running." >&2
+  exit 2
+fi
 
 if ! git -C "$DOTS_PATH" rev-parse --git-dir >/dev/null 2>&1; then
   echo "Not a git checkout: $DOTS_PATH" >&2

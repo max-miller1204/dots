@@ -20,6 +20,157 @@ echo "stub mise $*"
 EOF
 chmod +x "$SANDBOX/stub/mise"
 
+# A missing macOS flock is diagnosed without mutating package state.
+flock_stub="$SANDBOX/flock-diagnostic-stub"
+mkdir -p "$flock_stub"
+ln -s "$(command -v bash)" "$flock_stub/bash"
+cat >"$flock_stub/uname" <<'EOF'
+#!/usr/bin/env bash
+printf 'Darwin\n'
+EOF
+cat >"$flock_stub/brew" <<'EOF'
+#!/usr/bin/env bash
+touch "${0%/*}/brew-called"
+EOF
+chmod +x "$flock_stub/uname" "$flock_stub/brew"
+rc=0
+out=$(PATH="$flock_stub" "$ROOT/bin/dots-ensure-flock" 2>&1) || rc=$?
+((rc == 1)) || fail "missing flock diagnostic should exit 1 (got $rc)"
+assert_contains "$out" "dots install" "missing macOS flock has actionable guidance"
+[[ ! -e "$flock_stub/brew-called" ]] || fail "flock diagnostic invoked Homebrew"
+assertions=$((assertions + 1))
+
+# --- adoption migration: missing defaults are installed, user shell files are
+# preserved, Git defaults are merged, and mise receives the shipped tool set.
+printf '# custom shell\n' >"$HOME/.bashrc"
+migration_out=$(PATH="$SANDBOX/stub:$PATH" \
+  GIT_CONFIG_GLOBAL="$HOME/.config/git/config" \
+  DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788046742.sh" 2>&1)
+[[ $(cat "$HOME/.bashrc") == "# custom shell" ]] || fail "migration replaced a customized bashrc"
+[[ ! -e "$HOME/.config/dots/hooks/theme-set.d/10-sync-app-themes" ]] || fail "migration installed built-in logic as a user hook"
+[[ -f "$HOME/.config/ghostty/config" ]] || fail "migration did not install missing app config"
+[[ $(GIT_CONFIG_GLOBAL="$HOME/.config/git/config" git config --global --get diff.algorithm) == "histogram" ]] || fail "migration did not merge Git defaults"
+assert_contains "$migration_out" "stub mise use --global" "migration merges mise tool manifest"
+assertions=$((assertions + 4))
+
+adoption_fixtures="$ROOT/test/fixtures/1788046742"
+adoption_link_home="$SANDBOX/adoption-link-home"
+adoption_link_targets="$SANDBOX/adoption-link-targets"
+mkdir -p "$adoption_link_home" "$adoption_link_targets"
+cp "$adoption_fixtures/bashrc.old" "$adoption_link_targets/bashrc"
+cp "$adoption_fixtures/zshrc.old" "$adoption_link_targets/zshrc"
+ln -s "$adoption_link_targets/bashrc" "$adoption_link_home/.bashrc"
+ln -s "$adoption_link_targets/zshrc" "$adoption_link_home/.zshrc"
+HOME="$adoption_link_home" PATH="$SANDBOX/stub:$PATH" \
+  GIT_CONFIG_GLOBAL="$adoption_link_home/.config/git/config" \
+  DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788046742.sh" >/dev/null
+[[ -L $adoption_link_home/.bashrc ]] || fail "adoption migration replaced a stock bashrc symlink"
+[[ -L $adoption_link_home/.zshrc ]] || fail "adoption migration replaced a stock zshrc symlink"
+cmp -s "$adoption_link_targets/bashrc" "$adoption_fixtures/bashrc.old" || fail "adoption migration altered a bashrc symlink target"
+cmp -s "$adoption_link_targets/zshrc" "$adoption_fixtures/zshrc.old" || fail "adoption migration altered a zshrc symlink target"
+assertions=$((assertions + 4))
+
+# A failed manifest merge keeps the adoption migration pending for the next
+# update instead of recording a partially applied migration as complete.
+retry_repo="$SANDBOX/retry-repo"
+retry_home="$SANDBOX/retry-home"
+retry_state="$retry_home/.local/state/dots/migrations"
+mkdir -p "$retry_repo/migrations" "$retry_repo/bin" "$retry_repo/install/helpers" \
+  "$retry_home" "$SANDBOX/failing-stub"
+cp "$ROOT/migrations/1788046742.sh" "$retry_repo/migrations/1788046742.sh"
+cp "$ROOT/bin/dots-migrate" "$ROOT/bin/dots-path-resolve" "$ROOT/bin/dots-ensure-flock" \
+  "$ROOT/bin/dots-update-restart" "$retry_repo/bin/"
+cp "$ROOT/install/helpers/files.sh" "$retry_repo/install/helpers/files.sh"
+cat >"$SANDBOX/failing-stub/mise" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$SANDBOX/failing-stub/mise"
+if HOME="$retry_home" PATH="$SANDBOX/failing-stub:$PATH" DOTS_PATH="$retry_repo" \
+  DOTS_MIGRATION_STATE="$retry_state" GIT_CONFIG_GLOBAL="$retry_home/gitconfig" \
+  "$ROOT/bin/dots-migrate" >/dev/null 2>&1; then
+  fail "adoption migration succeeded after mise manifest merge failed"
+fi
+[[ ! -e "$retry_state/1788046742.sh" ]] || fail "failed adoption migration was marked complete"
+assertions=$((assertions + 2))
+
+# --- durability migration: executable path config and legacy integration
+# plumbing are retired without executing them; namespaced links replace only
+# the exact links previously owned by dots.
+durable_home="$SANDBOX/durable-home"
+mkdir -p "$durable_home/.config/dots/hooks/theme-set.d" "$durable_home/.config/btop/themes" \
+  "$durable_home/.config/nvim/lua/plugins" "$durable_home/.pi/agent"
+printf 'touch "$HOME/legacy-config-executed"\n' >"$durable_home/.config/dots/dots.conf"
+cat >"$durable_home/.config/dots/hooks/theme-set.d/10-sync-app-themes" <<'EOF'
+#!/usr/bin/env bash
+
+# Keep installed applications pointed at the newly rendered active theme.
+
+DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+
+"$DOTS_PATH/bin/dots-theme-sync-btop"
+"$DOTS_PATH/bin/dots-theme-sync-neovim"
+"$DOTS_PATH/bin/dots-theme-sync-pi"
+"$DOTS_PATH/bin/dots-theme-sync-claude"
+"$DOTS_PATH/bin/dots-theme-sync-tmux"
+EOF
+printf 'color_theme = "current"\n' >"$durable_home/.config/btop/btop.conf"
+printf '{"theme":"user-choice"}\n' >"$durable_home/.pi/agent/settings.json"
+HOME="$durable_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-set" tokyo-night >/dev/null
+ln -s "$durable_home/.local/state/dots/current/theme/btop.theme" "$durable_home/.config/btop/themes/current.theme"
+ln -s "$durable_home/.local/state/dots/current/theme/neovim.lua" "$durable_home/.config/nvim/lua/plugins/theme.lua"
+HOME="$durable_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788049840.sh" >/dev/null
+[[ ! -e "$durable_home/legacy-config-executed" ]] || fail "durability migration sourced legacy dots.conf"
+[[ $(cat "$durable_home/.config/dots/path") == "$ROOT" ]] || fail "durability migration did not store plain checkout path"
+[[ ! -e "$durable_home/.config/dots/dots.conf" && ! -L "$durable_home/.config/dots/dots.conf" ]] || fail "durability migration left dots.conf active"
+[[ ! -e "$durable_home/.config/dots/hooks/theme-set.d/10-sync-app-themes" ]] || fail "durability migration left legacy built-in hook"
+[[ ! -e "$durable_home/.config/btop/themes/current.theme" && ! -L "$durable_home/.config/btop/themes/current.theme" ]] || fail "durability migration left old btop link"
+[[ ! -e "$durable_home/.config/nvim/lua/plugins/theme.lua" && ! -L "$durable_home/.config/nvim/lua/plugins/theme.lua" ]] || fail "durability migration left old Neovim link"
+[[ -L "$durable_home/.config/btop/themes/dots-system.theme" ]] || fail "durability migration did not install namespaced btop link"
+[[ -L "$durable_home/.config/nvim/lua/plugins/dots-system.lua" ]] || fail "durability migration did not install namespaced Neovim link"
+[[ $(jq -r '.theme' "$durable_home/.pi/agent/settings.json") == "user-choice" ]] || fail "durability migration replaced Pi preference"
+assertions=$((assertions + 9))
+
+# --- final durability migration updates only the exact previously shipped
+# shell and Starship files, preserving customized copies.
+final_fixtures="$ROOT/test/fixtures/1788051792"
+final_home="$SANDBOX/final-migration-home"
+mkdir -p "$final_home/.config"
+cp "$final_fixtures/bashrc.41d3229" "$final_home/.bashrc"
+cp "$final_fixtures/zshrc.41d3229" "$final_home/.zshrc"
+cp "$final_fixtures/starship.old" "$final_home/.config/starship.toml"
+HOME="$final_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788051792.sh" >/dev/null
+cmp -s "$final_home/.bashrc" "$ROOT/default/bashrc" || fail "final migration did not update stock bashrc"
+cmp -s "$final_home/.zshrc" "$ROOT/default/zshrc" || fail "final migration did not update stock zshrc"
+cmp -s "$final_home/.config/starship.toml" "$ROOT/config/starship.toml" || fail "final migration did not update stock Starship"
+[[ -f "$final_home/.local/state/dots/restart-shell-required" ]] || fail "final shell migration left no restart marker"
+custom_home="$SANDBOX/custom-final-migration-home"
+mkdir -p "$custom_home"
+cp "$final_fixtures/bashrc.41d3229" "$custom_home/.bashrc"
+cp "$final_fixtures/zshrc.41d3229" "$custom_home/.zshrc"
+printf '# custom bash\n' >>"$custom_home/.bashrc"
+printf '# custom zsh\n' >>"$custom_home/.zshrc"
+HOME="$custom_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788051792.sh" >/dev/null
+[[ $(tail -1 "$custom_home/.bashrc") == "# custom bash" ]] || fail "final migration replaced customized bashrc"
+[[ $(tail -1 "$custom_home/.zshrc") == "# custom zsh" ]] || fail "final migration replaced customized zshrc"
+link_home="$SANDBOX/link-final-migration-home"
+link_targets="$SANDBOX/link-final-migration-targets"
+mkdir -p "$link_home/.config" "$link_targets"
+cp "$final_fixtures/bashrc.41d3229" "$link_targets/bashrc"
+cp "$final_fixtures/zshrc.41d3229" "$link_targets/zshrc"
+cp "$final_fixtures/starship.old" "$link_targets/starship.toml"
+ln -s "$link_targets/bashrc" "$link_home/.bashrc"
+ln -s "$link_targets/zshrc" "$link_home/.zshrc"
+ln -s "$link_targets/starship.toml" "$link_home/.config/starship.toml"
+HOME="$link_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788051792.sh" >/dev/null
+[[ -L $link_home/.bashrc ]] || fail "final migration replaced a stock bashrc symlink"
+[[ -L $link_home/.zshrc ]] || fail "final migration replaced a stock zshrc symlink"
+[[ -L $link_home/.config/starship.toml ]] || fail "final migration replaced a stock Starship symlink"
+cmp -s "$link_targets/bashrc" "$final_fixtures/bashrc.41d3229" || fail "final migration altered a bashrc symlink target"
+cmp -s "$link_targets/zshrc" "$final_fixtures/zshrc.41d3229" || fail "final migration altered a zshrc symlink target"
+cmp -s "$link_targets/starship.toml" "$final_fixtures/starship.old" || fail "final migration altered a Starship symlink target"
+assertions=$((assertions + 12))
+
 # --- free-space guard
 DOTS_UPDATE_MIN_FREE_KB=1 "$ROOT/bin/dots-update-requires-free-space" ||
   fail "free-space check failed with tiny threshold"
@@ -46,7 +197,7 @@ wait_for_lock_holder() { # block until <pid> owns the lock; the breadcrumb
   local i holder                    # is written only after acquisition
   for ((i = 0; i < 200; i++)); do
     holder=""
-    { read -r holder <"$DOTS_UPDATE_LOCK"; } 2>/dev/null || true
+    holder=$(tail -n 1 "$DOTS_UPDATE_LOCK" 2>/dev/null) || true
     [[ ${holder//[^0-9]/} == "$1" ]] && return 0
     sleep 0.05
   done
@@ -87,6 +238,36 @@ wait "$holder_pid" 2>/dev/null || true
 "$ROOT/bin/dots-update-lock" true || fail "lock not released after SIGKILL"
 assertions=$((assertions + 1))
 
+printf 'external lock target\n' >"$SANDBOX/external-lock"
+ln -s "$SANDBOX/external-lock" "$SANDBOX/symlink-lock"
+if DOTS_UPDATE_LOCK="$SANDBOX/symlink-lock" "$ROOT/bin/dots-update-lock" true >/dev/null 2>&1; then
+  fail "update lock accepted a symlink path"
+fi
+[[ $(cat "$SANDBOX/external-lock") == "external lock target" ]] || fail "update lock altered symlink target"
+assertions=$((assertions + 2))
+
+linked_state_home="$SANDBOX/update-linked-state-home"
+linked_state_target="$SANDBOX/update-linked-state-target"
+mkdir -p "$linked_state_home" "$linked_state_target"
+ln -s "$linked_state_target" "$linked_state_home/.local"
+if HOME="$linked_state_home" DOTS_PATH="$ROOT" DOTS_UPDATE_LOCK= \
+  "$ROOT/bin/dots-update-lock" true >/dev/null 2>&1; then
+  fail "update lock accepted a symlinked state parent"
+fi
+[[ ! -e "$linked_state_target/state/dots/update.lock" ]] || fail "update lock opened through state symlink"
+if HOME="$linked_state_home" DOTS_PATH="$ROOT" \
+  "$ROOT/bin/dots-migrate" --pending >/dev/null 2>&1; then
+  fail "migration check accepted a symlinked state parent"
+fi
+[[ ! -e "$linked_state_target/state/dots/migrations/migrate.lock" ]] || fail "migration lock opened through state symlink"
+mkdir -p "$linked_state_target/state/dots"
+printf 'restart\n' >"$linked_state_target/state/dots/restart-foreign-required"
+if HOME="$linked_state_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-update-restart" >/dev/null 2>&1; then
+  fail "restart reporting accepted a symlinked state parent"
+fi
+[[ -f "$linked_state_target/state/dots/restart-foreign-required" ]] || fail "restart reporting removed external marker"
+assertions=$((assertions + 6))
+
 # --- log analysis
 printf 'all good\nmise ERROR could not fetch\nHook failed: /x/y\n' >"$SANDBOX/bad.log"
 out=$("$ROOT/bin/dots-update-analyze-logs" "$SANDBOX/bad.log")
@@ -110,12 +291,24 @@ upstream="$SANDBOX/upstream"
 checkout="$SANDBOX/checkout"
 git_test init -q -b main "$upstream"
 echo one >"$upstream/file"
-git_test -C "$upstream" add file
+cp -R "$ROOT/bin" "$upstream/bin"
+mkdir -p "$upstream/install" "$upstream/migrations"
+cp -R "$ROOT/install/helpers" "$upstream/install/helpers"
+git_test -C "$upstream" add .
 git_test -C "$upstream" commit -qm "c1"
 git clone -q "$upstream" "$checkout"
 
 echo two >"$upstream/file"
 git_test -C "$upstream" commit -qam "c2"
+
+exec 7>>"$DOTS_UPDATE_LOCK"
+flock 7
+rc=0
+out=$(DOTS_PATH="$checkout" "$ROOT/bin/dots-update-available" 2>&1) || rc=$?
+((rc == 2)) || fail "update-available should report indeterminate while update lock is held"
+assert_contains "$out" "update is running" "update-available lock contention reported"
+flock -u 7
+exec 7>&-
 
 out=$(DOTS_PATH="$checkout" "$ROOT/bin/dots-update-available") ||
   fail "update-available should exit 0 when behind"
@@ -131,6 +324,10 @@ assert_contains "$out" "up to date" "up-to-date state reported"
 noremote="$SANDBOX/noremote"
 git_test init -q -b main "$noremote"
 git_test -C "$noremote" commit -q --allow-empty -m x
+mkdir -p "$noremote/bin" "$noremote/install/helpers"
+cp "$ROOT/bin/dots-update-available" "$ROOT/bin/dots-path-resolve" \
+  "$ROOT/bin/dots-ensure-flock" "$noremote/bin/"
+cp "$ROOT/install/helpers/files.sh" "$noremote/install/helpers/files.sh"
 rc=0
 DOTS_PATH="$noremote" "$ROOT/bin/dots-update-available" >/dev/null 2>&1 || rc=$?
 ((rc == 2)) || fail "no-remote should exit 2 (got $rc)"
@@ -140,7 +337,7 @@ assertions=$((assertions + 2))
 # throwaway DOTS_PATH keep a guard regression from ever touching the real
 # checkout or the real mise
 rc=0
-out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$SANDBOX/no-such-checkout" \
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$ROOT" \
   "$ROOT/bin/dots-update" --dry-run 2>&1) || rc=$?
 ((rc == 1)) || fail "dots-update with unknown args should exit 1 (got $rc)"
 assert_contains "$out" "Usage: dots update" "unknown args rejected with usage"
@@ -148,30 +345,188 @@ assert_contains "$out" "Usage: dots update" "unknown args rejected with usage"
 # the internal --transcribed marker is refused without the lock env, so it
 # cannot be used to skip the lock from outside the exec chain
 rc=0
-out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$SANDBOX/no-such-checkout" \
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$ROOT" \
   "$ROOT/bin/dots-update" --transcribed 2>&1) || rc=$?
 ((rc == 1)) || fail "bare --transcribed should be rejected (got $rc)"
 assert_contains "$out" "unknown arguments" "bare --transcribed treated as unknown"
+
+# Matching PID metadata plus an unrelated writable fd cannot forge proof of the
+# inherited update lock.
+rc=0
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" DOTS_UPDATE_LOCK="$DOTS_UPDATE_LOCK" \
+  bash -c 'exec 9>"$1"; export DOTS_UPDATE_LOCK_PID=$$; "$2" --transcribed' \
+    bash "$SANDBOX/forged-fd" "$ROOT/bin/dots-update" 2>&1) || rc=$?
+((rc == 1)) || fail "forged update lock proof should exit 1 (got $rc)"
+assert_contains "$out" "unknown arguments" "forged lock fd rejected"
+
+# Transcript and coordination entries refuse final symlinks before script(1)
+# can truncate or touch an external target.
+mkdir -p "$HOME/.local/state/dots"
+printf 'external transcript\n' >"$SANDBOX/external-transcript"
+ln -s "$SANDBOX/external-transcript" "$HOME/.local/state/dots/update.log"
+if PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update" >/dev/null 2>&1; then
+  fail "update accepted a symlink transcript"
+fi
+[[ $(cat "$SANDBOX/external-transcript") == "external transcript" ]] || fail "update altered transcript symlink target"
+rm "$HOME/.local/state/dots/update.log"
+printf 'external marker\n' >"$SANDBOX/external-update-marker"
+ln -s "$SANDBOX/external-update-marker" "$HOME/.local/state/dots/update-prev-incomplete"
+if PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update" >/dev/null 2>&1; then
+  fail "update accepted a symlink coordination marker"
+fi
+[[ $(cat "$SANDBOX/external-update-marker") == "external marker" ]] || fail "update altered coordination symlink target"
+rm "$HOME/.local/state/dots/update-prev-incomplete"
+assertions=$((assertions + 4))
 
 # --- end-to-end dots-update: stubbed mise, local git upstream, no network
 echo three >"$upstream/file"
 git_test -C "$upstream" commit -qam "c3"
 
+export DOTS_TEST_REAL_SCRIPT
+DOTS_TEST_REAL_SCRIPT=$(command -v script)
+cat >"$SANDBOX/stub/script" <<'EOF'
+#!/usr/bin/env bash
+rc=0
+"$DOTS_TEST_REAL_SCRIPT" "$@" || rc=$?
+if [[ ${1:-} == "-qF" ]]; then
+  transcript=$2
+else
+  transcript=${!#}
+fi
+if [[ -e $HOME/.local/state/dots/update-terminal-status ]]; then
+  echo "terminal sidecar published before recorder returned" >&2
+  exit 88
+fi
+printf 'recorder flush complete\n' >>"$transcript"
+if [[ ${DOTS_UPDATE_TEST_KILL_AFTER_SCRIPT:-} == "1" ]]; then
+  kill -KILL "$PPID"
+fi
+exit "$rc"
+EOF
+chmod +x "$SANDBOX/stub/script"
 out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update")
 assert_contains "$out" "Update complete." "pipeline completes"
 assert_contains "$out" "stub mise install" "mise sync ran"
 [[ -f "$HOME/.local/state/dots/update.log" ]] || fail "update transcript missing"
 grep -q "Update complete." "$HOME/.local/state/dots/update.log" || fail "transcript incomplete"
+grep -q "recorder flush complete" "$HOME/.local/state/dots/update.log" || fail "terminal sidecar preceded recorder flush"
+[[ -f "$HOME/.local/state/dots/update-terminal-status" ]] || fail "recorder return omitted terminal sidecar"
 [[ $(git -C "$checkout" log --oneline -1) == *c3* ]] || fail "update did not pull the new commit"
+assertions=$((assertions + 5))
+
+rc=0
+PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" DOTS_UPDATE_TEST_KILL_AFTER_SCRIPT=1 \
+  bash -c '"$1" & child=$!; wait "$child"' bash "$ROOT/bin/dots-update" >/dev/null 2>&1 || rc=$?
+((rc != 0)) || fail "post-recorder crash did not terminate outer update"
+[[ -f "$HOME/.local/state/dots/update-orderly-exit" ]] || fail "post-recorder crash lost orderly evidence"
+[[ ! -e "$HOME/.local/state/dots/update-terminal-status" ]] || fail "post-recorder crash prematurely published terminal status"
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update")
+case "$out" in
+  *"did not finish cleanly"*) fail "surviving orderly evidence was reported as a crash" ;;
+esac
+[[ ! -e "$HOME/.local/state/dots/update-orderly-exit" ]] || fail "promoted orderly evidence was not cleared"
+[[ -f "$HOME/.local/state/dots/update-terminal-status" ]] || fail "surviving orderly evidence was not promoted"
+assertions=$((assertions + 6))
+
+printf 'external restart\n' >"$SANDBOX/external-restart"
+ln -s "$SANDBOX/external-restart" "$HOME/.local/state/dots/restart-unsafe-required"
+rc=0
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update" 2>&1) || rc=$?
+((rc == 2)) || fail "restart-report failure should exit 2 (got $rc)"
+assert_contains "$out" "restart reporting" "restart-report failure listed as degraded"
+[[ -f "$HOME/.local/state/dots/update-terminal-status" ]] || fail "restart-report failure omitted terminal sidecar"
+[[ $(cat "$SANDBOX/external-restart") == "external restart" ]] || fail "restart-report failure altered symlink target"
+rm "$HOME/.local/state/dots/restart-unsafe-required"
 assertions=$((assertions + 3))
 
-# an incomplete previous transcript is preserved and reported
-printf '=== dots update: earlier ===\ndied here\n' >"$HOME/.local/state/dots/update.log"
+echo four >"$upstream/file"
+git_test -C "$upstream" commit -qam "c4"
+printf 'local scratch\n' >"$checkout/untracked-local"
+rc=0
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update" 2>&1) || rc=$?
+((rc == 2)) || fail "untracked checkout update should exit 2 (got $rc)"
+assert_contains "$out" "local changes" "untracked checkout blocks pull"
+[[ $(git -C "$checkout" log --oneline -1) == *c3* ]] || fail "update pulled across untracked work"
+rm "$checkout/untracked-local"
+assertions=$((assertions + 2))
+
+# A degraded mise or hook stage is reported distinctly, returns 2, and writes
+# a terminal marker that is not mistaken for a crashed run.
+cat >"$SANDBOX/stub/mise" <<'EOF'
+#!/usr/bin/env bash
+echo "stub mise $*"
+[[ ${1:-} != "upgrade" ]]
+EOF
+chmod +x "$SANDBOX/stub/mise"
+rc=0
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update" 2>&1) || rc=$?
+((rc == 2)) || fail "degraded mise update should exit 2 (got $rc)"
+assert_contains "$out" "Update incomplete." "degraded mise update reported"
+grep -q "Update incomplete." "$HOME/.local/state/dots/update.log" || fail "incomplete update marker missing"
+
+cat >"$SANDBOX/stub/mise" <<'EOF'
+#!/usr/bin/env bash
+echo "stub mise $*"
+EOF
+chmod +x "$SANDBOX/stub/mise"
+mkdir -p "$HOME/.config/dots/hooks"
+printf 'exit 1\n' >"$HOME/.config/dots/hooks/post-update"
+rc=0
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update" 2>&1) || rc=$?
+((rc == 2)) || fail "failed post-update hook should exit 2 (got $rc)"
+assert_contains "$out" "post-update hook" "failed hook listed as degraded"
+rm "$HOME/.config/dots/hooks/post-update"
+assertions=$((assertions + 4))
+
+mkdir -p "$checkout/migrations"
+cat >"$checkout/migrations/1999999999.sh" <<'EOF'
+exit 7
+EOF
+rc=0
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update" 2>&1) || rc=$?
+((rc == 7)) || fail "migration-failed update should exit 7 (got $rc)"
+assert_contains "$out" "Update incomplete." "migration failure writes terminal update marker"
+[[ -f "$HOME/.local/state/dots/update-terminal-status" ]] || fail "migration failure omitted terminal sidecar"
+rm "$checkout/migrations/1999999999.sh"
+assertions=$((assertions + 2))
+
+# Even a zero-byte started transcript is reported when no terminal sidecar was
+# published.
+rm -f "$HOME/.local/state/dots/update-terminal-status"
+: >"$HOME/.local/state/dots/update.log"
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update")
+assert_contains "$out" "did not finish cleanly" "zero-byte interrupted transcript reported"
+[[ -f "$HOME/.local/state/dots/update.log.prev" ]] || fail "zero-byte transcript not preserved"
+
+# Pipeline text cannot forge the out-of-band terminal sidecar. A real SIGKILL
+# between publishing the warning and rotating the log leaves both recoverable.
+rm -f "$HOME/.local/state/dots/update-terminal-status"
+printf '=== dots update: earlier ===\nhook said Update complete. but then died\n' >"$HOME/.local/state/dots/update.log"
+rc=0
+PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" DOTS_UPDATE_TEST_CRASH_AFTER_NOTE=1 \
+  bash -c '"$1" & child=$!; wait "$child"' bash "$ROOT/bin/dots-update" >/dev/null 2>&1 || rc=$?
+((rc != 0)) || fail "update note failpoint did not terminate"
+[[ -f "$HOME/.local/state/dots/update-prev-incomplete" ]] || fail "crash before rotation lost warning marker"
+grep -q "hook said Update complete" "$HOME/.local/state/dots/update.log" || fail "crash before rotation lost source transcript"
 out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update")
 assert_contains "$out" "did not finish cleanly" "incomplete previous run reported"
 [[ -f "$HOME/.local/state/dots/update.log.prev" ]] || fail "previous transcript not preserved"
-grep -q "died here" "$HOME/.local/state/dots/update.log.prev" || fail "preserved transcript lost content"
-assertions=$((assertions + 2))
+grep -q "hook said Update complete" "$HOME/.local/state/dots/update.log.prev" || fail "preserved transcript lost content"
+assertions=$((assertions + 6))
+
+cat >"$HOME/.config/dots/hooks/post-update" <<'EOF'
+update_pid=$(ps -o ppid= -p "$PPID")
+kill -KILL "$update_pid"
+EOF
+rc=0
+PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update" >/dev/null 2>&1 || rc=$?
+((rc != 0)) || fail "killed transcribed update unexpectedly succeeded"
+[[ ! -e "$HOME/.local/state/dots/update-terminal-status" ]] || fail "killed transcribed update published terminal status"
+rm "$HOME/.config/dots/hooks/post-update"
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update")
+assert_contains "$out" "did not finish cleanly" "killed transcribed update reported"
+[[ -f "$HOME/.local/state/dots/update.log.prev" ]] || fail "killed transcribed transcript not preserved"
+assertions=$((assertions + 4))
 
 # a deliberate guard abort marks its transcript and is not misreported as a
 # crash by the run after it

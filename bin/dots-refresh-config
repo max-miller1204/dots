@@ -4,7 +4,13 @@
 # dots:args=<config-path>
 # dots:examples=dots refresh config git/config
 
-DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+set -eo pipefail
+
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-refresh-config" "$@"; fi
+source "$DOTS_PATH/install/helpers/files.sh"
 
 config_file=${1:-}
 
@@ -28,25 +34,19 @@ fi
 
 user_config_file="${HOME}/.config/$config_file"
 default_config_file="$DOTS_PATH/config/$config_file"
-backup_config_file="$user_config_file.bak.$(date +%s)"
 
 if [[ ! -e $default_config_file ]]; then
   echo "Not a shipped config: $config_file" >&2
   exit 1
 fi
 
-mkdir -p "$(dirname "$user_config_file")"
+dots_file_replace "$default_config_file" "$user_config_file" backup
 
-if [[ -f $user_config_file ]]; then
-  cp -f "$user_config_file" "$backup_config_file"
-  cp -f "$default_config_file" "$user_config_file"
-
-  if cmp -s "$user_config_file" "$backup_config_file"; then
-    rm "$backup_config_file"
+if [[ -n $DOTS_FILE_BACKUP ]]; then
+  echo -e "\033[31mReplaced $user_config_file with the shipped default.\nSaved backup as ${DOTS_FILE_BACKUP}.\n\n\033[32mChanges:\033[0m"
+  if [[ -L $DOTS_FILE_BACKUP ]]; then
+    echo "Previous destination was a symlink to: $(readlink "$DOTS_FILE_BACKUP")"
   else
-    echo -e "\033[31mReplaced $user_config_file with the shipped default.\nSaved backup as ${backup_config_file}.\n\n\033[32mChanges:\033[0m"
-    diff "$user_config_file" "$backup_config_file" || true
+    diff "$user_config_file" "$DOTS_FILE_BACKUP" || true
   fi
-else
-  cp -f "$default_config_file" "$user_config_file"
 fi

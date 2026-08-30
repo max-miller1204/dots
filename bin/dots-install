@@ -11,59 +11,96 @@ DOTS_PATH=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 export DOTS_PATH
 export PATH="$DOTS_PATH/bin:$PATH"
 
+source "$DOTS_PATH/install/helpers/files.sh"
+dots_file_assert_safe_parents "$HOME/.local/state/dots/install.log" "$HOME"
 mkdir -p "$HOME/.local/state/dots"
 source "$DOTS_PATH/install/helpers/logging.sh"
 
 echo "Installing dots from $DOTS_PATH"
 
-# Non-default checkout locations are recorded so the env bootstrap and every
-# later shell can find the repo (omarchy's /etc/omarchy.conf mechanism).
-if [[ $DOTS_PATH != "$HOME/dotfiles" ]]; then
-  mkdir -p "$HOME/.config/dots"
-  printf 'DOTS_PATH="%s"\n' "$DOTS_PATH" >"$HOME/.config/dots/dots.conf"
-  echo "Recorded non-default checkout location in ~/.config/dots/dots.conf"
+install_done=0
+done_rc=0
+dots-done check install && install_done=1 || done_rc=$?
+if ((done_rc > 1)); then
+  echo "Cannot determine install completion safely." >&2
+  exit "$done_rc"
 fi
 
-# 1. Packages
+# Store the checkout as plain data, never sourced shell code. A newline cannot
+# be represented by the one-line format, and a colon cannot be represented as
+# one PATH entry, so reject both with an actionable error.
+if [[ $DOTS_PATH == *$'\n'* || $DOTS_PATH == *:* ]]; then
+  echo "The dots checkout path cannot contain a newline or colon: $DOTS_PATH" >&2
+  exit 1
+fi
+dots_path_source=$(mktemp "${TMPDIR:-/tmp}/dots-path.XXXXXX")
+printf '%s\n' "$DOTS_PATH" >"$dots_path_source"
+if ! dots_file_replace "$dots_path_source" "$HOME/.config/dots/path" backup; then
+  rm -f "$dots_path_source"
+  exit 1
+fi
+rm -f "$dots_path_source"
+if [[ -n $DOTS_FILE_BACKUP ]]; then
+  echo "Updated ~/.config/dots/path (backup at $DOTS_FILE_BACKUP)"
+else
+  echo "Recorded checkout location in ~/.config/dots/path"
+fi
+
+# Older installs stored executable shell text here. It is no longer sourced;
+# preserve and remove it so there is only one checkout-location authority.
+if [[ -e $HOME/.config/dots/dots.conf || -L $HOME/.config/dots/dots.conf ]]; then
+  dots_file_remove "$HOME/.config/dots/dots.conf" backup
+  echo "Retired ~/.config/dots/dots.conf (backup at $DOTS_FILE_BACKUP)"
+fi
+
+# 1. mise needs its live manifest before it can install the pinned tools.
+# Seed this one config first; the complete pass below is then a no-op for it.
+echo "Seeding mise config into ~/.config..."
+dots-refresh-config mise/config.toml
+
+# 2. Packages. A missing mise or failed install aborts the entire install.
 source "$DOTS_PATH/install/packages.sh"
 
-# 2. Seed configs: config/** -> ~/.config/**, backing up anything replaced
+# 3. Seed configs: config/** -> ~/.config/**, backing up anything replaced
 echo "Seeding configs into ~/.config..."
 (
   cd "$DOTS_PATH/config"
-  find . -type f ! -name '.DS_Store' | while IFS= read -r file; do
+  find . -type f ! -name '.DS_Store' -print0 | while IFS= read -r -d '' file; do
     dots-refresh-config "${file#./}"
   done
 )
 
-# 3. Shell integration: seed rc files, backing up differing versions
+# 4. Shell integration: seed rc files, backing up differing versions
 seed_home_file() { # seed_home_file <repo-file> <home-file>
-  local src="$DOTS_PATH/$1" dest="$HOME/$2" backup
-  backup="$dest.bak.$(date +%s)"
+  local src="$DOTS_PATH/$1" dest="$HOME/$2"
 
-  if [[ -f $dest ]] && ! cmp -s "$src" "$dest"; then
-    cp -f "$dest" "$backup"
-    echo "Replaced $dest (backup at $backup)"
+  dots_file_replace "$src" "$dest" backup
+  if [[ -n $DOTS_FILE_BACKUP ]]; then
+    echo "Replaced $dest (backup at $DOTS_FILE_BACKUP)"
   fi
-  cp -f "$src" "$dest"
 }
 
 seed_home_file default/bashrc .bashrc
 seed_home_file default/bash_profile .bash_profile
 seed_home_file default/zshrc .zshrc
 
-# 4. System-side and user-side setup
+# 5. System-side and user-side setup
 source "$DOTS_PATH/install/config/all.sh"
 source "$DOTS_PATH/install/user/all.sh"
 
-# 5. On first install, mark all shipped migrations as applied — a fresh
+# 6. On first install, mark all shipped migrations as applied — a fresh
 # install already reflects them (omarchy does the same for new users).
-if ! dots-done check install; then
-  mkdir -p "$HOME/.local/state/dots/migrations"
+if ((install_done == 0)); then
+  empty_marker=$(mktemp "${TMPDIR:-/tmp}/dots-install-migration-marker.XXXXXX")
+  trap 'rm -f "$empty_marker"' EXIT
   for migration in "$DOTS_PATH"/migrations/*.sh; do
     [[ -f $migration ]] || continue
-    touch "$HOME/.local/state/dots/migrations/$(basename "$migration")"
+    marker="$HOME/.local/state/dots/migrations/$(basename "$migration")"
+    dots_file_replace "$empty_marker" "$marker" discard
   done
+  rm -f "$empty_marker"
+  empty_marker=""
+  trap - EXIT
 fi
 
 dots-hook post-install

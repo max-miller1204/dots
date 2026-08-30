@@ -78,7 +78,7 @@ pipeline reports and clears these markers at the end
 
 Run `./test/all` after changes to `bin/`, the theme system, or the update
 pipeline. Suites are standalone executables under `test/` (`test/cli`,
-`test/update`) sourcing `test/helpers.sh` for shared assertions and sandbox
+`test/install`, `test/update`) sourcing `test/helpers.sh` for shared assertions and sandbox
 setup; wire new suites into `test/all`. Tests run in a sandbox `$HOME` and
 must not touch the real one — stub external commands (mise, network git)
 rather than calling them.

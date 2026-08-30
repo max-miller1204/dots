@@ -8,6 +8,11 @@
 # buried in the scrollback, it never fails the update. Grow this list only
 # for signatures that reliably mean something went wrong.
 
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd) || exit 1
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-update-analyze-logs" "$@"; fi
+
 log_file=${1:-$HOME/.local/state/dots/update.log}
 [[ -f $log_file ]] || exit 0
 

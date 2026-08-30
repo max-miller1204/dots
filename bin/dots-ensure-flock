@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+# dots:hidden=true
+# Ensure the cross-platform flock command needed by state transitions exists.
+
+set -eo pipefail
+
+command -v flock >/dev/null 2>&1 && exit 0
+
+if [[ $(uname -s) == "Darwin" ]]; then
+  echo "flock(1) is required. Re-run dots install on macOS, or run: brew install flock" >&2
+else
+  echo "flock(1) is required. Install your distribution's util-linux package." >&2
+fi
+exit 1

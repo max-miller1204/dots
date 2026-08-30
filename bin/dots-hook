@@ -5,6 +5,11 @@
 
 set -e
 
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-hook" "$@"; fi
+
 if (( $# < 1 )); then
   echo "Usage: dots-hook [name] [args...]"
   exit 1
@@ -14,14 +19,27 @@ HOOK_PATH="$HOME/.config/dots/hooks/$1"
 HOOK_DIR="$HOOK_PATH.d"
 shift
 
+hook_rc=0
+run_hook() {
+  local hook=$1
+  shift
+
+  if ! bash "$hook" "$@"; then
+    echo "Hook failed: $hook" >&2
+    hook_rc=1
+  fi
+}
+
 if [[ -f $HOOK_PATH ]]; then
-  bash "$HOOK_PATH" "$@" || echo "Hook failed: $HOOK_PATH"
+  run_hook "$HOOK_PATH" "$@"
 fi
 
 if [[ -d $HOOK_DIR ]]; then
   for hook in "$HOOK_DIR"/*; do
     [[ -f $hook ]] || continue
     [[ $hook == *.sample ]] && continue
-    bash "$hook" "$@" || echo "Hook failed: $hook"
+    run_hook "$hook" "$@"
   done
 fi
+
+exit "$hook_rc"

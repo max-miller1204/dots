@@ -6,7 +6,11 @@
 
 set -eo pipefail
 
-DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-config-import" "$@"; fi
+source "$DOTS_PATH/install/helpers/files.sh"
 
 config_file=${1:-}
 
@@ -28,8 +32,7 @@ if [[ ! -f $src ]]; then
   exit 1
 fi
 
-mkdir -p "$(dirname "$dest")"
-cp "$src" "$dest"
+dots_file_replace "$src" "$dest" discard "$DOTS_PATH"
 
 echo "Imported ~/.config/$config_file into $DOTS_PATH/config/$config_file"
 echo "Review and commit it: git -C \"$DOTS_PATH\" add \"config/$config_file\""

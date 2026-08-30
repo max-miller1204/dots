@@ -3,7 +3,10 @@
 # dots:summary=List available themes
 # dots:examples=dots theme list
 
-DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve") || exit 1
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd) || exit 1
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-theme-list" "$@"; fi
 
 current=""
 [[ -f "$HOME/.local/state/dots/current/theme.name" ]] &&

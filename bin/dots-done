@@ -4,7 +4,15 @@
 # dots:args=<check|mark|ensure> <name>
 # dots:hidden=true
 
-set -e
+set -euo pipefail
+
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
+  exec "$DOTS_PATH/bin/dots-done" "$@"
+fi
+source "$DOTS_PATH/install/helpers/files.sh"
 
 if (( $# != 2 )); then
   echo "Usage: dots-done <check|mark|ensure> <name>" >&2
@@ -21,16 +29,25 @@ if [[ $name == */* || $name == "." || $name == ".." ]]; then
   exit 1
 fi
 
+dots_file_assert_safe_parents "$marker" "$HOME" || exit 2
+if [[ -L $marker || ( -e $marker && ! -f $marker ) ]]; then
+  echo "Refusing unsafe done marker: $marker" >&2
+  exit 2
+fi
+
 case "$action" in
   check)
-    [[ -f $marker ]]
+    [[ -f $marker && ! -L $marker ]]
     ;;
   mark)
-    mkdir -p "$done_dir"
-    touch "$marker"
+    empty_marker=$(mktemp "${TMPDIR:-/tmp}/dots-done-marker.XXXXXX")
+    trap 'rm -f "$empty_marker"' EXIT
+    dots_file_replace "$empty_marker" "$marker" discard
     ;;
   ensure)
     mkdir -p "$done_dir"
+    dots_file_assert_safe_parents "$marker" "$HOME"
+    [[ ! -L $marker ]] || exit 1
     (set -o noclobber; : >"$marker") 2>/dev/null
     ;;
   *)

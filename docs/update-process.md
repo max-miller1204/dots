@@ -17,24 +17,32 @@ dots-update
   │    (DOTS_UPDATE_FORCE=1 bypasses; unknown free space is skipped;
   │     a deliberate abort writes "Update aborted." so the next run
   │     doesn't misreport it as a crash)
-  ├─ git pull --ff-only                only when the checkout is clean
+  ├─ git pull --ff-only                only with no tracked, staged, or untracked work
   ├─ mise install / upgrade            sync tools to the manifest
   ├─ dots-migrate                      run pending migrations
-  ├─ dots-hook post-update             user hooks
+  ├─ dots-hook post-update             user hooks (aggregate failures)
   ├─ dots-update-analyze-logs          flag known failure signatures
   └─ dots-update-restart               report restart-*-required markers
 ```
+
+The command exits `0` only after every convergence stage succeeds. Git, mise,
+or post-update hook failures are collected and reported as `Update incomplete.`
+with exit status `2`; migration failures retain their own nonzero status. An
+offline or locally modified checkout may still complete safe local stages, but
+is reported as incomplete rather than indistinguishable from full success.
 
 ## State and coordination files
 
 | Path | Purpose |
 | --- | --- |
-| `~/.local/state/dots/update.lock` | Update lock file, held via flock(1) on an inherited fd (deliberately not under TMPDIR, which differs between GUI and cron/ssh contexts). The file persists between runs — the kernel, not the file, owns the lock; its content is only a holder-pid breadcrumb for refusal messages. Override with `DOTS_UPDATE_LOCK`. |
-| `~/.local/state/dots/update-prev-incomplete` | One-shot marker from the locked stage to the transcribed stage that the previous transcript was rotated to `.prev`; consumed when the note is printed. |
-| `~/.local/state/dots/update.log` | Transcript of the last `dots update`, read by the analyzer. |
-| `~/.local/state/dots/update.log.prev` | Preserved transcript of a run that died or aborted; the next update reports it instead of silently truncating. |
+| `~/.local/state/dots/update.lock` | Update lock file, held via flock(1) on an inherited fd. Parent symlinks are refused, and the append-open fd's inode is checked against the still-regular path before the PID breadcrumb is written through the fd itself. Internal stages reverify the fd. The file persists between runs; the kernel owns the lock. Override with a path under `$HOME` via `DOTS_UPDATE_LOCK`. |
+| `~/.local/state/dots/update-prev-incomplete` | One-shot warning published before an incomplete transcript is rotated to `.prev`, so a crash at either boundary remains reportable; removed after the warning is printed, allowing harmless replay after interruption. |
+| `~/.local/state/dots/update-orderly-exit` | Temporary one-line status evidence atomically published by an orderly transcribed child. The locked outer stage promotes valid surviving evidence before classifying the prior transcript, and normally accepts it only when it matches `script(1)`'s status. It is never terminal evidence by itself. |
+| `~/.local/state/dots/update-terminal-status` | Out-of-band terminal sidecar promoted by the locked outer stage only from matching orderly-exit evidence after `script(1)` returns and closes the transcript. A crashed or signaled child remains unmarked. |
+| `~/.local/state/dots/update.log` | Transcript of the last `dots update`, read by the analyzer. Final symlinks and non-file occupants are refused before `script(1)` can write. Any transcript, including a zero-byte file, without the terminal sidecar is treated as interrupted. |
+| `~/.local/state/dots/update.log.prev` | Preserved transcript of a run that died without a terminal marker; the next update reports it instead of silently truncating. Deliberate aborts already carry `Update aborted.` and are not rotated. |
 | `~/.local/state/dots/restart-<component>-required` | Restart markers, reported and cleared at the end of an update. |
-| `~/.local/state/dots/migrations/` | Per-machine migration completion markers. |
+| `~/.local/state/dots/migrations/` | Per-machine migration completion markers plus a parent-safe, inode-verified `migrate.lock`, which serializes pending checks and execution. |
 
 ## Restart markers
 
@@ -56,8 +64,8 @@ Exit codes are distinct so scripts can tell the states apart:
 
 - `0` — updates available (pending commits printed)
 - `1` — up to date
-- `2` — cannot determine (not a checkout, no remote, or no upstream)
+- `2` — cannot determine (not a checkout, no remote/upstream, or an update currently owns the Git lock)
 
-A failed fetch is quiet and falls back to the existing remote-tracking
+The availability check shares the update lock so its fetch cannot race a full update. A failed fetch is quiet and falls back to the existing remote-tracking
 state, so it works offline. Wire it into a prompt segment, a login check,
 or a scheduled job as you like.

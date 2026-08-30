@@ -1,25 +1,49 @@
 # Single source of truth for DOTS_PATH + PATH adjustments. Sourced by:
-#   ~/.bashrc   (interactive bash)
-#   ~/.zshrc    (interactive zsh)
+#   ~/.bashrc   (interactive and some non-interactive Bash sessions)
+#   ~/.zshrc    (interactive Zsh)
 #
-# ~/.config/dots/dots.conf is written by dots-install when the checkout lives
-# somewhere other than ~/dotfiles. When absent, force the default instead of
-# preserving a stale inherited value.
-if [ -f "$HOME/.config/dots/dots.conf" ]; then
-  . "$HOME/.config/dots/dots.conf"
-  : "${DOTS_PATH:=$HOME/dotfiles}"
-else
+# A non-default checkout is stored as plain data in ~/.config/dots/path. It is
+# deliberately never sourced as shell code. Newlines are rejected by the
+# installer, so one read recovers the path exactly, including spaces, quotes,
+# backticks, and dollar signs.
+dots_path_file="$HOME/.config/dots/path"
+if [[ ( -e $dots_path_file || -L $dots_path_file ) && ( -L $dots_path_file || ! -f $dots_path_file ) ]]; then
+  echo "Refusing non-regular checkout path file: $dots_path_file" >&2
+  return 1 2>/dev/null || exit 1
+fi
+if [[ -f $dots_path_file ]]; then
+  dots_path_value=""
+  dots_path_count=0
+  while IFS= read -r dots_path_line || [[ -n $dots_path_line ]]; do
+    dots_path_count=$((dots_path_count + 1))
+    dots_path_value=$dots_path_line
+  done <"$dots_path_file"
+  if ((dots_path_count == 1)) && [[ -n $dots_path_value && $dots_path_value != *:* ]]; then
+    DOTS_PATH=$dots_path_value
+  else
+    DOTS_PATH=""
+  fi
+fi
+if [[ -z ${DOTS_PATH:-} || $DOTS_PATH == *$'\n'* || $DOTS_PATH == *:* ]]; then
   DOTS_PATH="$HOME/dotfiles"
 fi
+unset dots_path_file dots_path_value dots_path_count dots_path_line
 export DOTS_PATH
 
-# Homebrew (macOS): must precede the system dirs so `#!/usr/bin/env bash`
-# resolves to brew's modern bash instead of the system 3.2. Presence in
-# PATH is not enough — GUI terminals inherit a PATH that path_helper
-# reorders, stranding an old entry behind /bin — so remove any existing
-# entries and prepend. Guarded, so Linux machines skip it.
-if [ -d /opt/homebrew/bin ]; then
-  hb_bin=/opt/homebrew/bin hb_sbin=/opt/homebrew/sbin
+# Homebrew (macOS): must precede system dirs so `#!/usr/bin/env bash`
+# resolves to modern Bash rather than 3.2. Support both Apple Silicon's
+# /opt/homebrew and Intel's /usr/local without treating Linux /usr/local as
+# Homebrew. GUI terminals may have reordered an existing entry behind /bin.
+hb_prefix=""
+if [[ $(uname -s) == "Darwin" ]]; then
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    hb_prefix=/opt/homebrew
+  elif [[ -x /usr/local/bin/brew ]]; then
+    hb_prefix=/usr/local
+  fi
+fi
+if [[ -n $hb_prefix ]]; then
+  hb_bin="$hb_prefix/bin" hb_sbin="$hb_prefix/sbin"
   PATH=":$PATH:"
   PATH="${PATH//:$hb_sbin:/:}"
   PATH="${PATH//:$hb_bin:/:}"
@@ -28,6 +52,7 @@ if [ -d /opt/homebrew/bin ]; then
   PATH="$hb_bin:$hb_sbin${PATH:+:$PATH}"
   unset hb_bin hb_sbin
 fi
+unset hb_prefix
 
 # Unlike omarchy (whose binaries ship to /usr/bin via a package), the checkout
 # is the install here, so bin/ is always prepended.

@@ -13,9 +13,13 @@ elif [[ -x "$HOME/.local/bin/mise" ]]; then
   mise_bin="$HOME/.local/bin/mise"
 fi
 
-if [[ -n $mise_bin ]]; then
-  "$mise_bin" install || echo "Some mise tools failed to install; re-run 'mise install' to retry."
-else
-  echo "mise not found — install it first (https://mise.jdx.dev/getting-started.html),"
-  echo "then re-run: dots install"
+if [[ -z $mise_bin ]]; then
+  echo "mise not found — install it first (https://mise.jdx.dev/getting-started.html)," >&2
+  echo "then re-run: dots install" >&2
+  return 1
+fi
+
+if ! "$mise_bin" install; then
+  echo "mise install failed; fix the error and re-run: dots install" >&2
+  return 1
 fi

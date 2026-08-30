@@ -10,20 +10,47 @@
 # Three exec stages: acquire the flock'd fd (dots-update-lock), re-exec
 # under script(1) so the run is recorded on a real pty, then run the
 # pipeline (--transcribed marks the innermost stage; it is honored only
-# when the lock sentinel names our direct parent — the script(1) stage —
-# so hooks, migrations, and their descendants cannot re-enter with it).
+# while the verified lock fd is still inherited, before the pipeline closes
+# it so hooks, migrations, and their descendants cannot re-enter with it).
 
 set -eo pipefail
 
 SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
+  exec "$DOTS_PATH/bin/dots-update" "$@"
+fi
+source "$DOTS_PATH/install/helpers/files.sh"
+STATE_DIR="$HOME/.local/state/dots"
+dots_file_assert_safe_parents "$STATE_DIR/update.log" "$HOME"
+UPDATE_LOCK="${DOTS_UPDATE_LOCK:-$STATE_DIR/update.lock}"
 
-# The sentinel is the lock holder's PID, which script(1) inherits through
-# the exec chain — so the transcribed stage is exactly the process whose
-# parent carries it. An exported copy reaching hooks or daemons they leave
-# behind cannot equal the caller's own $PPID.
+update_lock_fd_valid() {
+  local lock_id fd_id
+
+  { true >&9; } 2>/dev/null || return 1
+  command -v flock >/dev/null 2>&1 || return 1
+  if [[ $(uname -s) == "Darwin" ]]; then
+    lock_id=$(stat -f '%i' "$UPDATE_LOCK" 2>/dev/null) || return 1
+    fd_id=$(stat -f '%i' /dev/fd/9 2>/dev/null) || return 1
+  else
+    lock_id=$(stat -Lc '%d:%i' "$UPDATE_LOCK" 2>/dev/null) || return 1
+    fd_id=$(stat -Lc '%d:%i' /proc/self/fd/9 2>/dev/null) || return 1
+  fi
+  [[ $lock_id == "$fd_id" ]] || return 1
+
+  # Re-locking the inherited open file description succeeds. A forged fd on
+  # the real file either acquires the lock (making the run safe) or fails while
+  # another updater owns it.
+  flock -n 9
+}
+
+# The transcribed stage must inherit both the lock sentinel and the verified
+# locked fd. The fd is closed immediately below, so exported state reaching
+# hooks or daemons cannot authorize another transcribed stage.
 transcribed=""
-if [[ ${1:-} == "--transcribed" && ${DOTS_UPDATE_LOCK_PID:-} == "$PPID" ]]; then
+if [[ ${1:-} == "--transcribed" && -n ${DOTS_UPDATE_LOCK_PID:-} ]] && update_lock_fd_valid; then
   transcribed=1
   shift
 fi
@@ -41,28 +68,77 @@ if [[ ! -d $DOTS_PATH ]]; then
   exit 1
 fi
 
-STATE_DIR="$HOME/.local/state/dots"
 LOG_FILE="$STATE_DIR/update.log"
+PREV_LOG_FILE="$LOG_FILE.prev"
 PREV_NOTE_MARKER="$STATE_DIR/update-prev-incomplete"
+TERMINAL_STATUS_FILE="$STATE_DIR/update-terminal-status"
+ORDERLY_EXIT_FILE="$STATE_DIR/update-orderly-exit"
+for owned_state_file in "$LOG_FILE" "$PREV_LOG_FILE" "$PREV_NOTE_MARKER" "$TERMINAL_STATUS_FILE" "$ORDERLY_EXIT_FILE"; do
+  dots_file_assert_safe_parents "$owned_state_file" "$HOME"
+  if [[ -L $owned_state_file || ( -e $owned_state_file && ! -f $owned_state_file ) ]]; then
+    echo "Refusing unsafe update state path: $owned_state_file" >&2
+    exit 1
+  fi
+done
+
+finish_update() {
+  local status=$1 status_source
+  status_source=$(mktemp "${TMPDIR:-/tmp}/dots-update-status.XXXXXX")
+  printf '%s\n' "$status" >"$status_source"
+  dots_file_replace "$status_source" "$ORDERLY_EXIT_FILE" discard
+  rm -f "$status_source"
+  exit "$status"
+}
+
+promote_orderly_exit() {
+  local expected=${1:-}
+  local -a orderly_lines=()
+
+  [[ -f $LOG_FILE && -f $ORDERLY_EXIT_FILE ]] || return 0
+  mapfile -t orderly_lines <"$ORDERLY_EXIT_FILE"
+  ((${#orderly_lines[@]} == 1)) || return 0
+  [[ ${orderly_lines[0]} =~ ^(0|[1-9][0-9]{0,2})$ ]] || return 0
+  ((${orderly_lines[0]} <= 255)) || return 0
+  [[ -z $expected || ${orderly_lines[0]} == "$expected" ]] || return 0
+  dots_file_replace "$ORDERLY_EXIT_FILE" "$TERMINAL_STATUS_FILE" discard
+}
 
 if [[ -z $transcribed ]]; then
   # Stage 1: serialize with any other running update. Stage 2 may only run
   # in the lock wrapper's own exec'd process: the sentinel must equal our
   # PID and the lock fd must actually be open, so a stale exported
   # sentinel colliding with a reused PID still goes through the lock.
-  if [[ ${DOTS_UPDATE_LOCK_PID:-} != "$$" ]] || ! { true >&9; } 2>/dev/null; then
+  if [[ ${DOTS_UPDATE_LOCK_PID:-} != "$$" ]]; then
     exec "$SELF_DIR/dots-update-lock" "$SELF_DIR/dots-update"
+  fi
+  if ! update_lock_fd_valid; then
+    echo "Inherited update lock proof is invalid; refusing to continue." >&2
+    exit 1
   fi
 
   # Stage 2 (locked): rotate a dead run's transcript before script(1)
-  # truncates the log. A previous transcript with neither end marker
-  # ("Update complete." / "Update aborted.") means that run died — preserve
-  # it and leave a note marker for the transcribed stage to report.
+  # truncates the log. A previous transcript with no terminal status marker
+  # means that run died — preserve it and leave a note marker for the
+  # transcribed stage to report.
   mkdir -p "$STATE_DIR"
-  if [[ -s $LOG_FILE ]] && ! grep -Eq "Update (complete|aborted)\." "$LOG_FILE"; then
-    mv -f "$LOG_FILE" "$LOG_FILE.prev"
-    touch "$PREV_NOTE_MARKER"
+  promote_orderly_exit
+  if [[ -e $LOG_FILE && ! -f $TERMINAL_STATUS_FILE ]]; then
+    # Publish the warning marker before moving the only transcript. A death at
+    # either boundary therefore leaves enough state for the next run to report.
+    note_source=$(mktemp "${TMPDIR:-/tmp}/dots-update-note.XXXXXX")
+    dots_file_replace "$note_source" "$PREV_NOTE_MARKER" discard
+    rm -f "$note_source"
+    if [[ ${DOTS_UPDATE_TEST_CRASH_AFTER_NOTE:-} == "1" ]]; then
+      kill -KILL "$$"
+    fi
+    mv -f "$LOG_FILE" "$PREV_LOG_FILE"
+  elif [[ -e $LOG_FILE ]]; then
+    dots_file_remove "$LOG_FILE" discard
   fi
+  # A status file only describes the transcript just handled. Remove it after
+  # the old log is gone, so a death here cannot misclassify that old log.
+  dots_file_remove "$TERMINAL_STATUS_FILE" discard
+  dots_file_remove "$ORDERLY_EXIT_FILE" discard
 
   # Re-exec under script(1) for a transcript recorded off a real pty (child
   # programs keep colors/progress, and the log is complete when script
@@ -88,12 +164,16 @@ if [[ -z $transcribed ]]; then
   # trailing args and propagates its exit status by default; util-linux
   # needs -e for the status and -c with a command string, which it hands
   # to $SHELL — pinned to the running bash so the quoting always parses.
+  script_rc=0
   if [[ $(uname -s) == "Darwin" ]]; then
-    exec script -qF "$LOG_FILE" "$SELF_DIR/dots-update" --transcribed
+    script -qF "$LOG_FILE" "$SELF_DIR/dots-update" --transcribed || script_rc=$?
   else
     inner="$SELF_DIR/dots-update"
-    SHELL=$BASH exec script -qefc "${inner@Q} --transcribed" "$LOG_FILE"
+    SHELL=$BASH script -qefc "${inner@Q} --transcribed" "$LOG_FILE" || script_rc=$?
   fi
+  promote_orderly_exit "$script_rc"
+  dots_file_remove "$ORDERLY_EXIT_FILE" discard
+  exit "$script_rc"
 fi
 
 # Stage 3 (locked + transcribed): the pipeline. The lock lives on fd 9 in
@@ -108,41 +188,52 @@ exec 9>&-
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-# A deliberate abort still marks the transcript as finished, so the next run
-# doesn't misreport it as a crash.
 abort_update() {
   echo "Update aborted."
-  exit "$1"
+  finish_update "$1"
 }
 
 echo "=== dots update: $(date) ==="
 if [[ -f $PREV_NOTE_MARKER ]]; then
-  rm -f "$PREV_NOTE_MARKER"
   echo "Note: the previous update did not finish cleanly (transcript: $LOG_FILE.prev)."
+  dots_file_remove "$PREV_NOTE_MARKER" discard
 fi
 
 "$SELF_DIR/dots-update-requires-free-space" || abort_update "$?"
 
+degraded_steps=()
+
 # 1. Fast-forward the checkout, but never touch local work in progress.
 if git -C "$DOTS_PATH" rev-parse --git-dir >/dev/null 2>&1; then
-  if git -C "$DOTS_PATH" diff --quiet && git -C "$DOTS_PATH" diff --cached --quiet; then
+  if [[ -z $(git -C "$DOTS_PATH" status --porcelain --untracked-files=normal) ]]; then
     if git -C "$DOTS_PATH" remote get-url origin >/dev/null 2>&1; then
       echo "Updating dotfiles checkout..."
-      git -C "$DOTS_PATH" pull --ff-only || echo "Could not fast-forward; resolve manually."
+      if ! git -C "$DOTS_PATH" pull --ff-only; then
+        echo "Could not fast-forward; resolve manually." >&2
+        degraded_steps+=("git pull")
+      fi
     else
-      echo "No git remote configured; skipping pull."
+      echo "No git remote configured; checkout convergence cannot be verified." >&2
+      degraded_steps+=("git remote")
     fi
   else
-    echo "Checkout has local changes; skipping pull."
+    echo "Checkout has local changes; skipping pull." >&2
+    degraded_steps+=("git pull (local changes)")
   fi
+else
+  echo "Dotfiles path is not a Git checkout; skipping pull." >&2
+  degraded_steps+=("git checkout")
 fi
 
 # 2. Packages: install anything newly pinned in the manifest, then upgrade.
 if command -v mise >/dev/null 2>&1; then
   echo "Syncing mise tools..."
-  mise install || true
-  mise upgrade || true
-  mise self-update --yes >/dev/null 2>&1 || true
+  mise install || degraded_steps+=("mise install")
+  mise upgrade || degraded_steps+=("mise upgrade")
+  mise self-update --yes >/dev/null 2>&1 || degraded_steps+=("mise self-update")
+else
+  echo "mise is unavailable; tool convergence failed." >&2
+  degraded_steps+=("mise unavailable")
 fi
 
 # 3. Migrations, then the post-update hook — same order as omarchy update.
@@ -150,18 +241,29 @@ fi
 migrate_rc=0
 "$SELF_DIR/dots-migrate" || migrate_rc=$?
 if ((migrate_rc == 0)); then
-  "$SELF_DIR/dots-hook" post-update
+  "$SELF_DIR/dots-hook" post-update || degraded_steps+=("post-update hook")
 else
   echo "Migrations failed (exit $migrate_rc); skipping the post-update hook."
 fi
 
-# 4. Point at problems buried in the transcript, then report restarts.
-"$SELF_DIR/dots-update-analyze-logs" "$LOG_FILE"
-"$SELF_DIR/dots-update-restart"
+# 4. Point at problems buried in the transcript, then report restarts. These
+# reporting failures degrade the run but still publish terminal status.
+"$SELF_DIR/dots-update-analyze-logs" "$LOG_FILE" || degraded_steps+=("log analysis")
+"$SELF_DIR/dots-update-restart" || degraded_steps+=("restart reporting")
 
 if ((migrate_rc != 0)); then
   echo "Update failed: migrations exited $migrate_rc."
-  exit "$migrate_rc"
+  echo "Update incomplete."
+  finish_update "$migrate_rc"
+fi
+
+if ((${#degraded_steps[@]})); then
+  echo
+  echo "Update did not fully converge:" >&2
+  printf '  - %s\n' "${degraded_steps[@]}" >&2
+  echo "Update incomplete."
+  finish_update 2
 fi
 
 echo "Update complete."
+finish_update 0

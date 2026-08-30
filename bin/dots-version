@@ -2,7 +2,10 @@
 
 # dots:summary=Show the dots version and checkout revision
 
-DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve") || exit 1
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd) || exit 1
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-version" "$@"; fi
 
 version="unknown"
 [[ -f "$DOTS_PATH/version" ]] && version=$(<"$DOTS_PATH/version")

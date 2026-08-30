@@ -6,6 +6,12 @@
 
 set -e
 
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-hook-install" "$@"; fi
+source "$DOTS_PATH/install/helpers/files.sh"
+
 event=${1:-}
 script=${2:-}
 
@@ -14,13 +20,24 @@ if [[ -z $event || -z $script ]]; then
   exit 1
 fi
 
+if [[ ! $event =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+  echo "Hook event must use lowercase letters, digits, and internal hyphens: $event" >&2
+  exit 1
+fi
+
 if [[ ! -f $script ]]; then
   echo "No such file: $script" >&2
   exit 1
 fi
 
+script_name=$(basename "$script")
+if [[ ! $script_name =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  echo "Hook script name contains unsafe characters: $script_name" >&2
+  exit 1
+fi
+
 hook_dir="$HOME/.config/dots/hooks/$event.d"
-mkdir -p "$hook_dir"
-cp "$script" "$hook_dir/"
-chmod +x "$hook_dir/$(basename "$script")"
-echo "Installed hook: $hook_dir/$(basename "$script")"
+hook_path="$hook_dir/$script_name"
+dots_file_replace "$script" "$hook_path" discard
+chmod +x "$hook_path"
+echo "Installed hook: $hook_path"

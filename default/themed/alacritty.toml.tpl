@@ -6,6 +6,22 @@ foreground = "{{ foreground }}"
 text = "{{ background }}"
 cursor = "{{ bright_foreground }}"
 
+[colors.vi_mode_cursor]
+text = "{{ background }}"
+cursor = "{{ bright_foreground }}"
+
+[colors.search.matches]
+foreground = "{{ background }}"
+background = "{{ yellow }}"
+
+[colors.search.focused_match]
+foreground = "{{ background }}"
+background = "{{ red }}"
+
+[colors.footer_bar]
+foreground = "{{ background }}"
+background = "{{ foreground }}"
+
 [colors.selection]
 text = "{{ selection_foreground }}"
 background = "{{ selection_background }}"

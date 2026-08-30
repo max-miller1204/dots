@@ -16,14 +16,19 @@
 # selection_foreground = bright_foreground, unless the theme defines them.
 # Omarchy's mix/gradient helpers are not implemented.
 #
-# Rendering only happens when the staged theme has colors.toml. Existing files
-# are never overwritten, so a hand-written themes/<name>/btop.theme wins over
-# default/themed/btop.theme.tpl. User templates are processed before built-ins,
-# so a user template with the same output filename shadows the built-in.
+# Rendering only happens when the staged theme has colors.toml. Existing
+# regular files are never overwritten, so a hand-written
+# themes/<name>/btop.theme wins over default/themed/btop.theme.tpl; symlinks and
+# non-regular occupants are rejected. User templates are processed before
+# built-ins, so a user template with the same output filename shadows the
+# built-in. Publication also fails if supported placeholders remain unresolved.
 
 set -eo pipefail
 
-DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-theme-set-templates" "$@"; fi
 
 staging=${1:?Usage: dots-theme-set-templates <staged-theme-dir>}
 colors_file="$staging/colors.toml"
@@ -33,10 +38,15 @@ colors_file="$staging/colors.toml"
 sedfile=$(mktemp "${TMPDIR:-/tmp}/dots-theme-rules.XXXXXX")
 trap 'rm -f "$sedfile"' EXIT
 
-emit_rules() { # emit_rules <key> <value>
-  local key=$1 val=$2 r g b
+escape_sed_replacement() {
+  printf '%s' "$1" | sed 's/[\\&|]/\\&/g'
+}
 
-  printf 's|{{ *%s_strip *}}|%s|g\n' "$key" "${val#\#}"
+emit_rules() { # emit_rules <key> <value>
+  local key=$1 val=$2 stripped escaped r g b
+
+  stripped=$(escape_sed_replacement "${val#\#}")
+  printf 's|{{ *%s_strip *}}|%s|g\n' "$key" "$stripped"
 
   if [[ $val =~ ^#([0-9a-fA-F][0-9a-fA-F])([0-9a-fA-F][0-9a-fA-F])([0-9a-fA-F][0-9a-fA-F])$ ]]; then
     r=$((16#${BASH_REMATCH[1]}))
@@ -45,7 +55,8 @@ emit_rules() { # emit_rules <key> <value>
     printf 's|{{ *%s_rgb *}}|%s,%s,%s|g\n' "$key" "$r" "$g" "$b"
   fi
 
-  printf 's|{{ *%s *}}|%s|g\n' "$key" "$val"
+  escaped=$(escape_sed_replacement "$val")
+  printf 's|{{ *%s *}}|%s|g\n' "$key" "$escaped"
 }
 
 selection_value=""
@@ -78,8 +89,16 @@ fi
 render() { # render <template> — output lands in staging, named without .tpl
   local tpl=$1 out
   out="$staging/$(basename "${tpl%.tpl}")"
-  [[ -e $out ]] && return 0
+  if [[ -L $out || ( -e $out && ! -f $out ) ]]; then
+    echo "Refusing non-regular rendered output: $out" >&2
+    return 1
+  fi
+  [[ -f $out ]] && return 0
   sed -f "$sedfile" "$tpl" >"$out"
+  if LC_ALL=C grep -Eq '\{\{[[:space:]]*[A-Za-z0-9_]+[[:space:]]*\}\}' "$out"; then
+    echo "Unresolved theme placeholder in rendered output: $out" >&2
+    return 1
+  fi
 }
 
 for tpl in "$HOME/.config/dots/themed"/*.tpl; do

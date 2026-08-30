@@ -5,7 +5,11 @@
 
 set -eo pipefail
 
-DOTS_PATH=${DOTS_PATH:-$HOME/dotfiles}
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-reinstall-configs" "$@"; fi
+source "$DOTS_PATH/install/helpers/files.sh"
 
 # Omarchy's equivalent replays /etc/skel over $HOME without backup. Same
 # semantics here, but behind a confirmation since there is no snapshot to
@@ -21,15 +25,14 @@ fi
 
 (
   cd "$DOTS_PATH/config"
-  find . -type f ! -name '.DS_Store' | while IFS= read -r file; do
+  find . -type f ! -name '.DS_Store' -print0 | while IFS= read -r -d '' file; do
     file=${file#./}
-    mkdir -p "$(dirname "$HOME/.config/$file")"
-    cp -f "$file" "$HOME/.config/$file"
+    dots_file_replace "$file" "$HOME/.config/$file" discard
   done
 )
 
-cp -f "$DOTS_PATH/default/bashrc" "$HOME/.bashrc"
-cp -f "$DOTS_PATH/default/bash_profile" "$HOME/.bash_profile"
-cp -f "$DOTS_PATH/default/zshrc" "$HOME/.zshrc"
+dots_file_replace "$DOTS_PATH/default/bashrc" "$HOME/.bashrc" discard
+dots_file_replace "$DOTS_PATH/default/bash_profile" "$HOME/.bash_profile" discard
+dots_file_replace "$DOTS_PATH/default/zshrc" "$HOME/.zshrc" discard
 
 echo "Configs reset to shipped defaults."
