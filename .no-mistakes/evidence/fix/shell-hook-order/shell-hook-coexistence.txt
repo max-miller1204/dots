@@ -1,0 +1,17 @@
+Bash installed hooks: _mise_hook_prompt_command;starship_precmd;__zoxide_hook
+Bash prompt event ran: mise starship zoxide 
+Zsh prompt hooks: prompt_starship_precmd _mise_hook_precmd
+Zsh directory hooks: __zoxide_hook _mise_hook_chpwd
+Zsh prompt/directory events ran: starship mise-precmd zoxide mise-chpwd 
+Bash without optional tools: fallback prompt installed (\[\e[34m\]\W\[\e[0m\] \$ )
+Zsh without optional tools: fallback prompt installed (%F{blue}%1~%f %# )
+Before fix, Bash retained only: starship_precmd (mise and zoxide hooks lost)
+Actual installed integrations:
+declare -- PROMPT_COMMAND="_mise_hook_prompt_command;starship_precmd;__zoxide_hook"
+Bash hook functions: mise=function starship=function zoxide=function
+Zsh prompt hooks: prompt_starship_precmd _mise_hook_precmd
+Zsh directory hooks: __zoxide_hook _mise_hook_chpwd
+_mise_hook_precmd: function
+prompt_starship_precmd: function
+_mise_hook_chpwd: function
+__zoxide_hook: function
