@@ -123,6 +123,53 @@ assert_contains "$alias_out" "--group-directories-first" "eza aliases preserve d
 assert_contains "$alias_out" "--tree --level=2 --long --git" "eza tree alias preserves portable options"
 assertions=$((assertions + 1))
 
+# Prompt integrations must preserve mise, Starship, and zoxide hooks together.
+shell_stub_bin="$SANDBOX/shell-stubs"
+mkdir -p "$shell_stub_bin"
+cat >"$shell_stub_bin/mise" <<'EOF'
+#!/usr/bin/env bash
+if [[ $2 == "bash" ]]; then
+  echo 'PROMPT_COMMAND="_mise_hook_prompt_command${PROMPT_COMMAND:+;$PROMPT_COMMAND}"'
+else
+  echo 'precmd_functions+=(_mise_hook_precmd)'
+  echo 'chpwd_functions+=(_mise_hook_chpwd)'
+fi
+EOF
+cat >"$shell_stub_bin/fzf" <<'EOF'
+#!/usr/bin/env bash
+echo ':'
+EOF
+cat >"$shell_stub_bin/starship" <<'EOF'
+#!/usr/bin/env bash
+if [[ $2 == "bash" ]]; then
+  echo 'PROMPT_COMMAND=starship_precmd'
+else
+  echo 'precmd_functions=(prompt_starship_precmd)'
+fi
+EOF
+cat >"$shell_stub_bin/zoxide" <<'EOF'
+#!/usr/bin/env bash
+if [[ $2 == "bash" ]]; then
+  echo 'PROMPT_COMMAND="${PROMPT_COMMAND:+${PROMPT_COMMAND};}__zoxide_hook"'
+else
+  echo 'chpwd_functions+=(__zoxide_hook)'
+fi
+EOF
+chmod +x "$shell_stub_bin"/*
+PATH="$shell_stub_bin:/usr/bin:/bin" TERM=xterm bash -c \
+  'source "$1"; [[ $PROMPT_COMMAND == *"_mise_hook_prompt_command"* &&
+    $PROMPT_COMMAND == *"starship_precmd"* && $PROMPT_COMMAND == *"__zoxide_hook"* ]]' \
+  bash "$ROOT/default/bash/init" || fail "Bash integrations did not preserve every prompt hook"
+if command -v zsh >/dev/null 2>&1; then
+  PATH="$shell_stub_bin:/usr/bin:/bin" TERM=xterm zsh -c \
+    'source "$1"; [[ " ${precmd_functions[*]} " == *" _mise_hook_precmd "* &&
+      " ${precmd_functions[*]} " == *" prompt_starship_precmd "* &&
+      " ${chpwd_functions[*]} " == *" _mise_hook_chpwd "* &&
+      " ${chpwd_functions[*]} " == *" __zoxide_hook "* ]]' \
+    zsh "$ROOT/default/bash/init" || fail "Zsh integrations did not preserve every prompt hook"
+fi
+assertions=$((assertions + 1))
+
 # Direct commands that have not sourced shell startup still honor the serialized
 # canonical checkout path.
 serialized_repo="$SANDBOX/serialized checkout"
