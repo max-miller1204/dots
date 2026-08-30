@@ -25,7 +25,10 @@ esac
   exit 1
 }
 
-source_path="$HOME/.local/state/dots/current/theme/pi.json"
+state_root="$HOME/.local/state/dots"
+source_path="$state_root/current/theme/pi.json"
+previous_pointer="$state_root/theme-previous"
+previous_source_path=""
 config_dir="${PI_AGENT_DIR:-$HOME/.pi/agent}"
 theme_dir="$config_dir/themes"
 theme_path="$theme_dir/dots-system.json"
@@ -45,6 +48,10 @@ if ! "$SELF_DIR/dots-theme-source-valid" pi.json; then
   echo "Refusing unowned Pi theme source: $source_path" >&2
   exit 1
 fi
+if "$SELF_DIR/dots-theme-source-valid" --previous pi.json; then
+  previous_target=$(readlink "$previous_pointer")
+  previous_source_path="$state_root/$previous_target/theme/pi.json"
+fi
 if ! $activate && [[ ! -d $config_dir ]]; then
   exit 0
 fi
@@ -53,7 +60,7 @@ dots_file_assert_safe_parents "$ownership_path" "$HOME"
 dots_file_assert_safe_parents "$settings_path" "$HOME"
 
 mkdir -p "$theme_dir"
-dots_file_sync_owned_payload "$source_path" "$theme_path" "$ownership_path" "Pi theme"
+dots_file_sync_owned_payload "$source_path" "$theme_path" "$ownership_path" "Pi theme" "$previous_source_path"
 
 $activate || exit 0
 
