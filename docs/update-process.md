@@ -19,6 +19,7 @@ dots-update
   │     doesn't misreport it as a crash)
   ├─ git pull --ff-only                only with no tracked, staged, or untracked work
   ├─ mise install / upgrade            sync tools to the manifest
+  ├─ mise self-update                  update the standalone mise binary
   ├─ dots-migrate                      run pending migrations
   ├─ dots-hook post-update             user hooks (aggregate failures)
   ├─ dots-update-analyze-logs          flag known failure signatures

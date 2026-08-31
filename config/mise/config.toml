@@ -20,7 +20,8 @@ lazygit = "latest"
 neovim = "latest"
 node = "lts"
 "npm:@playwright/cli" = "latest"
-"npm:stepstone" = "latest"
+# Stepstone is this setup's own low-volume package; Aube otherwise refuses it.
+"npm:stepstone" = { version = "latest", allow_low_downloads = true }
 opencode = "latest"
 pi = "latest"
 python = "latest"
