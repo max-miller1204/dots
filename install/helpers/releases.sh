@@ -298,6 +298,7 @@ dots_release_activate() { # activate <version>
   if [[ $current != "-" ]]; then
     dots_release_atomic_pointer "$DOTS_RELEASE_PREVIOUS" "$current" || return 1
   fi
+  if [[ ${DOTS_RELEASE_TEST_PAUSE_AT:-} == "after-previous" ]]; then kill -STOP "$$"; fi
   [[ ${DOTS_RELEASE_TEST_FAIL_AT:-} != "after-previous" ]] || return 86
   if [[ ${DOTS_RELEASE_TEST_CRASH_AT:-} == "after-previous" ]]; then kill -KILL "$$"; fi
   dots_release_atomic_pointer "$DOTS_RELEASE_CURRENT" "$version" || return 1

@@ -191,6 +191,35 @@ DOTS_RELEASE_TEST_CRASH_AT=after-current bash -c \
 dots_release_activate 1.1.1 || fail "could not restore release state after recovery checks"
 assertions=$((assertions + 12))
 
+DOTS_RELEASE_TEST_PAUSE_AT=after-previous \
+  "$DOTS_RELEASE_CURRENT/bin/dots-version-rollback" >/dev/null &
+transition_pid=$!
+transition_state=""
+for _ in {1..100}; do
+  transition_state=$(ps -o stat= -p "$transition_pid" 2>/dev/null) || transition_state=""
+  [[ $transition_state == *T* ]] && break
+  sleep 0.02
+done
+[[ $transition_state == *T* ]] || fail "release transition did not pause while locked"
+rc=0
+"$DOTS_RELEASE_CURRENT/bin/dots-version-list" >/dev/null 2>&1 || rc=$?
+paused_current=$(readlink "$DOTS_RELEASE_CURRENT")
+paused_previous=$(readlink "$DOTS_RELEASE_PREVIOUS")
+paused_transaction=""
+[[ -f $DOTS_RELEASE_POINTER_TRANSACTION ]] && paused_transaction=1
+kill -CONT "$transition_pid"
+transition_rc=0
+wait "$transition_pid" || transition_rc=$?
+((rc != 0)) || fail "version list reconciled a concurrent release transition"
+[[ $paused_current == "releases/1.1.1" ]] || fail "concurrent list changed current"
+[[ $paused_previous == "releases/1.1.1" ]] || fail "concurrent list changed the partial previous pointer"
+[[ -n $paused_transaction ]] || fail "concurrent list removed the active transaction"
+((transition_rc == 0)) || fail "paused release transition did not complete"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.0" ]] || fail "resumed release transition did not activate its target"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS") == "1.1.1" ]] || fail "resumed release transition lost its rollback target"
+dots_release_activate 1.1.1 || fail "could not restore release state after concurrency check"
+assertions=$((assertions + 8))
+
 # Every command that moves an active pointer shares the update lock.
 "$DOTS_RELEASE_CURRENT/bin/dots-update-lock" sleep 30 &
 lock_pid=$!

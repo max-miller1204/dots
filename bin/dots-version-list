@@ -15,6 +15,9 @@ source "$DOTS_PATH/install/helpers/releases.sh"
   echo "Usage: dots version list" >&2
   exit 1
 }
+if ! dots_release_lock_fd_valid; then
+  exec "$SELF_DIR/dots-update-lock" "$0" "$@"
+fi
 current=$(dots_release_pointer_version "$DOTS_RELEASE_CURRENT" 2>/dev/null) || current=""
 previous=$(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS" 2>/dev/null) || previous=""
 found=0
