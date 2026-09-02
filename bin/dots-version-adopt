@@ -36,6 +36,4 @@ dots_release_install_latest
 current=$(dots_release_pointer_version "$DOTS_RELEASE_CURRENT")
 echo "Adopted stable dots $current. Your checkout was not modified."
 echo "Converging tools and migrations..."
-exec 9>&-
-unset DOTS_UPDATE_LOCK_PID
 DOTS_UPDATE_SKIP_RELEASE_ONCE=$current exec "$DOTS_RELEASE_CURRENT/bin/dots-update"

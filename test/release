@@ -18,6 +18,25 @@ exit 0
 MISE
 chmod +x "$SANDBOX/stub/mise"
 export PATH="$SANDBOX/stub:$PATH"
+source "$ROOT/install/helpers/files.sh"
+source "$ROOT/install/helpers/releases.sh"
+
+# The release builder emits the archive, checksum list, and latest-release
+# manifest consumed by stable installations.
+release_dist="$SANDBOX/dist"
+"$ROOT/scripts/build-release.sh" "v$(git -C "$ROOT" show HEAD:version)" "$release_dist" >/dev/null
+built_version=$(git -C "$ROOT" show HEAD:version)
+built_archive="dots-$built_version.tar.gz"
+[[ -f $release_dist/$built_archive ]] || fail "release builder emitted no archive"
+[[ $(tar -tzf "$release_dist/$built_archive" | sed -n '1p') == "dots-$built_version/" ]] ||
+  fail "release archive has the wrong root"
+built_sha=$(dots_release_sha256 "$release_dist/$built_archive")
+[[ $(awk -v name="$built_archive" '$2 == name || $2 == "*" name { print $1 }' "$release_dist/SHA256SUMS") == "$built_sha" ]] ||
+  fail "release checksum does not match the archive"
+mapfile -t built_manifest <"$release_dist/dots-release.txt"
+[[ ${built_manifest[*]} == "dots-release-v1 version=$built_version archive=$built_archive sha256=$built_sha" ]] ||
+  fail "release manifest does not describe the archive"
+assertions=$((assertions + 4))
 
 make_release() { # make_release <version>
   local version=$1 build archive sha destination
@@ -49,8 +68,6 @@ export DOTS_RELEASE_BASE_URL="file://$release_server"
 export DOTS_RELEASE_MANIFEST_URL="file://$release_server/latest/download/dots-release.txt"
 
 make_release 1.1.0
-source "$ROOT/install/helpers/files.sh"
-source "$ROOT/install/helpers/releases.sh"
 dots_release_install_latest || fail "latest release installation failed"
 [[ -n $DOTS_RELEASE_CHANGED ]] || fail "first release installation reported no change"
 [[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.0" ]] || fail "current release pointer is wrong"
@@ -128,7 +145,20 @@ rc=0
 cp "$SANDBOX/good-manifest" "$release_server/latest/download/dots-release.txt"
 assertions=$((assertions + 2))
 
-"$DOTS_RELEASE_CURRENT/bin/dots-version-install" latest >/dev/null
+real_flock=$(command -v flock)
+export DOTS_TEST_REAL_FLOCK=$real_flock
+cat >"$SANDBOX/stub/flock" <<'FLOCK'
+#!/usr/bin/env bash
+if [[ -n ${DOTS_TEST_FLOCK_TRACE:-} && " $* " == *" -E "* ]]; then
+  printf 'acquire\n' >>"$DOTS_TEST_FLOCK_TRACE"
+fi
+exec "$DOTS_TEST_REAL_FLOCK" "$@"
+FLOCK
+chmod +x "$SANDBOX/stub/flock"
+install_lock_trace="$SANDBOX/version-install-lock-trace"
+DOTS_TEST_REAL_FLOCK="$real_flock" DOTS_TEST_FLOCK_TRACE="$install_lock_trace" \
+  "$DOTS_RELEASE_CURRENT/bin/dots-version-install" latest >/dev/null
+[[ $(wc -l <"$install_lock_trace") -eq 1 ]] || fail "version install reacquired its update lock"
 [[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.1" ]] || fail "second release was not activated"
 first_migration=""
 for migration in "$DOTS_RELEASE_CURRENT"/migrations/*.sh; do
@@ -158,7 +188,7 @@ wait "$lock_pid" 2>/dev/null || true
 "$DOTS_RELEASE_CURRENT/bin/dots-version-rollback" >/dev/null
 [[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.0" ]] || fail "rollback did not switch current"
 [[ $(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS") == "1.1.1" ]] || fail "rollback did not preserve the newer release"
-assertions=$((assertions + 4))
+assertions=$((assertions + 5))
 
 # Stable update checks compare release metadata instead of requiring Git.
 rc=0
@@ -201,9 +231,12 @@ source_checkout=$(cd -- "$source_checkout" && pwd -P)
 printf 'dirty\n' >"$source_checkout/untracked-local"
 out=$("$DOTS_RELEASE_CURRENT/bin/dots-version")
 assert_contains "$out" "(dev " "developer version output"
-"$source_checkout/bin/dots-dev-unlink" >/dev/null
-[[ $(cat "$HOME/.config/dots/path") == "$DOTS_RELEASE_CURRENT" ]] || fail "dev unlink did not restore stable mode"
-assertions=$((assertions + 3))
+adopt_lock_trace="$SANDBOX/version-adopt-lock-trace"
+DOTS_TEST_REAL_FLOCK="$real_flock" DOTS_TEST_FLOCK_TRACE="$adopt_lock_trace" \
+  "$source_checkout/bin/dots-version-adopt" >/dev/null
+[[ $(wc -l <"$adopt_lock_trace") -eq 1 ]] || fail "version adopt reacquired its update lock"
+[[ $(cat "$HOME/.config/dots/path") == "$DOTS_RELEASE_CURRENT" ]] || fail "version adopt did not restore stable mode"
+assertions=$((assertions + 4))
 
 mkdir -p "$HOME/.config/example"
 printf 'live config\n' >"$HOME/.config/example/config.toml"

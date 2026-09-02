@@ -213,7 +213,7 @@ mkdir -p "$SANDBOX/spaced-df"
 cat >"$SANDBOX/spaced-df/df" <<'DF'
 #!/usr/bin/env bash
 printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
-printf 'map auto_home 4096 2048 2048 50%% /Volumes/My Disk\n'
+printf 'map 99%% auto_home 4096 2048 2048 50%% /Volumes/My Disk\n'
 DF
 chmod +x "$SANDBOX/spaced-df/df"
 PATH="$SANDBOX/spaced-df:$PATH" DOTS_UPDATE_MIN_FREE_KB=1500 \

@@ -26,8 +26,6 @@ converge_active_release() {
   local active
   active=$(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") || return 1
   echo "Converging tools and migrations for dots $active..."
-  exec 9>&-
-  unset DOTS_UPDATE_LOCK_PID
   DOTS_UPDATE_SKIP_RELEASE_ONCE=$active exec "$DOTS_RELEASE_CURRENT/bin/dots-update"
 }
 

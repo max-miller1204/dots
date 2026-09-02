@@ -14,7 +14,7 @@ for f in "$ROOT"/bin/*; do
 done
 while IFS= read -r f; do
   bash -n "$f" || fail "syntax error in $f"
-done < <(find "$ROOT/install" "$ROOT/scripts" "$ROOT/test" -type f \( -name '*.sh' -o -name 'cli' -o -name 'release' -o -name 'update' -o -name 'all' \))
+done < <(find "$ROOT/install" "$ROOT/test" -type f \( -name '*.sh' -o -name 'cli' -o -name 'update' -o -name 'all' \))
 assertions=$((assertions + 1))
 
 setup_sandbox
