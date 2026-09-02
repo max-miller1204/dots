@@ -54,12 +54,26 @@ source "$DOTS_PATH/install/config/flock.sh"
 
 original_args=("$@")
 install_mode=stable
+bootstrap_version=""
+bootstrap_archive=""
+bootstrap_sha=""
 if [[ ${1:-} == "--developer" ]]; then
   install_mode=developer
   shift
 elif [[ ${1:-} == "--release-runtime" ]]; then
   install_mode=release-runtime
   shift
+elif [[ ${1:-} == "--bootstrap-release" ]]; then
+  install_mode=bootstrap-release
+  shift
+  if (($# != 3)); then
+    echo "Invalid internal release bootstrap invocation." >&2
+    exit 1
+  fi
+  bootstrap_version=$1
+  bootstrap_archive=$2
+  bootstrap_sha=$3
+  shift 3
 fi
 if (($#)); then
   echo "Usage: dots install [--developer]" >&2
@@ -75,6 +89,16 @@ if [[ $install_mode == "stable" ]]; then
   fi
   echo "Installing the latest stable dots release..."
   dots_release_install_latest
+  exec "$DOTS_RELEASE_CURRENT/bin/dots-install" --release-runtime
+elif [[ $install_mode == "bootstrap-release" ]]; then
+  packaged_version=$(<"$DOTS_PATH/version")
+  if [[ $packaged_version != "$bootstrap_version" ]]; then
+    echo "Refusing a release bootstrap whose payload version does not match." >&2
+    exit 1
+  fi
+  echo "Installing dots $bootstrap_version..."
+  dots_release_install_archive "$bootstrap_version" "$bootstrap_archive" "$bootstrap_sha"
+  dots_release_activate "$bootstrap_version"
   exec "$DOTS_RELEASE_CURRENT/bin/dots-install" --release-runtime
 elif [[ $install_mode == "developer" ]]; then
   if git -C "$DOTS_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1; then

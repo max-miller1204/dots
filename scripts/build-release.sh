@@ -23,8 +23,10 @@ if [[ ! $tag =~ ^v${version_pattern}$ ]]; then
 fi
 
 if ! git -C "$repo_root" rev-parse --verify HEAD >/dev/null 2>&1 ||
-  ! git -C "$repo_root" cat-file -e HEAD:version 2>/dev/null; then
-  echo "Release artifacts must be built from a Git commit containing version." >&2
+  ! git -C "$repo_root" cat-file -e HEAD:version 2>/dev/null ||
+  ! git -C "$repo_root" cat-file -e HEAD:scripts/build-installer.sh 2>/dev/null ||
+  ! git -C "$repo_root" cat-file -e HEAD:scripts/install.sh.tpl 2>/dev/null; then
+  echo "Release artifacts must be built from a Git commit containing version and installer sources." >&2
   exit 1
 fi
 mapfile -t version_lines < <(git -C "$repo_root" show HEAD:version)
@@ -44,6 +46,7 @@ archive_name="$archive_root.tar.gz"
 archive="$output_dir/$archive_name"
 checksum="$output_dir/SHA256SUMS"
 manifest="$output_dir/dots-release.txt"
+installer="$output_dir/install.sh"
 temporary_archive="$output_dir/.$archive_name.tmp.$$"
 smoke_dir=""
 success=0
@@ -52,13 +55,13 @@ cleanup() {
   [[ -n $smoke_dir ]] && rm -rf -- "$smoke_dir"
   rm -f -- "$temporary_archive"
   if ((success == 0)); then
-    rm -f -- "$archive" "$checksum" "$manifest"
+    rm -f -- "$archive" "$checksum" "$manifest" "$installer"
   fi
 }
 trap cleanup EXIT
 
 mkdir -p -- "$output_dir"
-rm -f -- "$archive" "$checksum" "$manifest" "$temporary_archive"
+rm -f -- "$archive" "$checksum" "$manifest" "$installer" "$temporary_archive"
 
 payload=(bin config default install migrations themes version)
 COPYFILE_DISABLE=1 git -C "$repo_root" archive \
@@ -66,6 +69,19 @@ COPYFILE_DISABLE=1 git -C "$repo_root" archive \
   --prefix="$archive_root/" \
   HEAD \
   -- "${payload[@]}" | gzip -n >"$temporary_archive"
+
+if ! verbose_listing=$(tar -tvzf "$temporary_archive"); then
+  echo "Smoke test failed: release archive cannot be listed." >&2
+  exit 1
+fi
+while IFS= read -r listing_line; do
+  [[ -n $listing_line ]] || continue
+  entry_type=${listing_line:0:1}
+  if [[ $entry_type != "-" && $entry_type != "d" ]]; then
+    echo "Smoke test failed: release archive contains a link or special entry." >&2
+    exit 1
+  fi
+done <<<"$verbose_listing"
 
 smoke_dir=$(mktemp -d "${TMPDIR:-/tmp}/dots-release.XXXXXX")
 COPYFILE_DISABLE=1 tar -xzf "$temporary_archive" -C "$smoke_dir"
@@ -115,6 +131,17 @@ else
 fi
 
 archive_sha=$(awk -v name="$archive_name" '$2 == name || $2 == "*" name { print $1; exit }' "$checksum")
+committed_installer_renderer="$smoke_dir/build-installer.sh"
+committed_installer_template="$smoke_dir/install.sh.tpl"
+git -C "$repo_root" show HEAD:scripts/build-installer.sh >"$committed_installer_renderer"
+git -C "$repo_root" show HEAD:scripts/install.sh.tpl >"$committed_installer_template"
+DOTS_INSTALLER_TEMPLATE="$committed_installer_template" \
+  "$BASH" "$committed_installer_renderer" "$version" "$archive_name" "$archive_sha" "$installer"
+if command -v sha256sum >/dev/null 2>&1; then
+  (cd -- "$output_dir" && sha256sum install.sh >>SHA256SUMS)
+else
+  (cd -- "$output_dir" && shasum -a 256 install.sh >>SHA256SUMS)
+fi
 cat >"$manifest" <<EOF
 dots-release-v1
 version=$version
@@ -124,5 +151,6 @@ EOF
 
 success=1
 printf 'Built %s\n' "$archive"
+printf 'Built %s\n' "$installer"
 printf 'Built %s\n' "$checksum"
 printf 'Built %s\n' "$manifest"

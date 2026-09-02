@@ -80,14 +80,18 @@ login check, or a scheduled job as you like.
 ## Activation and rollback
 
 Release archives are verified before their immutable directory is published.
-While holding the update lock, activation first records the old pointer state
-and intended target in a durable transaction, then replaces `previous` and
-`current` individually. Every operation that can read, reconcile, or mutate
-these pointers holds the same lock. If activation is interrupted, the next such
-operation either recognizes the completed pair or restores both old pointers,
-so the prior rollback target remains recoverable. After activation, stable
-update and version-install commands securely re-exec the new runtime while
-retaining the lock through tool and migration convergence.
+Publication first prepares a verified, read-only sibling of the final release
+path and then atomically renames it into place. If publication is interrupted,
+a retry publishes a matching ready tree only after its ownership marker and
+complete integrity inventory verify; unrelated or invalid trees are left
+untouched. While holding the update lock, activation first records the old
+pointer state and intended target in a durable transaction, then replaces
+`previous` and `current` individually. Every operation that can read, reconcile,
+or mutate these pointers holds the same lock. If activation is interrupted, the
+next such operation either recognizes the completed pair or restores both old
+pointers, so the prior rollback target remains recoverable. After activation,
+stable update and version-install commands securely re-exec the new runtime
+while retaining the lock through tool and migration convergence.
 
 `dots version rollback` swaps the runtime pointers, but deliberately does not
 undo migrations, copied configuration, or mise upgrades.

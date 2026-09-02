@@ -45,6 +45,7 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             "dist/dots-${GITHUB_REF_NAME#v}.tar.gz" \
+            dist/install.sh \
             dist/SHA256SUMS \
             dist/dots-release.txt \
             --verify-tag \

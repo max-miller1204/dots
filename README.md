@@ -1,10 +1,10 @@
 # dots
 
-Personal dotfiles for macOS, Ubuntu, and WSL. Configs are copied—not symlinked—while immutable release bundles keep the runtime separate from an editable source checkout. [mise](https://mise.jdx.dev) installs the same tools on every platform.
+Personal dotfiles for macOS, Ubuntu, and WSL. Configs are copied—not symlinked—and immutable GitHub Release bundles provide the command runtime. [mise](https://mise.jdx.dev) installs the same tools on every platform.
 
 ## Setup
 
-Install `git` and `curl` first. macOS also requires [Homebrew](https://brew.sh) for the Bash command runtime and `flock`; the installer does not change the configured login shell. For broader Bash completion beyond the built-in `dots` commands, install the optional platform framework using the commands in [Shell completion setup](docs/setup.md#optional-bash-completion-framework).
+Install `curl` first. macOS also requires [Homebrew](https://brew.sh) for the Bash command runtime and `flock`; the installer does not change the configured login shell. For broader Bash completion beyond the built-in `dots` commands, install the optional platform framework using the commands in [Shell completion setup](docs/setup.md#optional-bash-completion-framework).
 
 1. Install the official standalone mise release:
 
@@ -12,15 +12,16 @@ Install `git` and `curl` first. macOS also requires [Homebrew](https://brew.sh) 
    curl https://mise.run | sh
    ```
 
-2. Clone the editable source and install the latest stable dots release:
+2. Install the latest stable dots release:
 
    ```bash
-   git clone https://github.com/max-miller1204/dots.git ~/dotfiles
-   ~/dotfiles/bin/dots-install
+   installer=$(mktemp)
+   curl -fsSL https://github.com/max-miller1204/dots/releases/latest/download/install.sh -o "$installer" && bash "$installer"
+   rm -f "$installer"
    exec "$SHELL" -l
    ```
 
-The checkout remains available for authoring, but daily commands run from the packaged release under `~/.local/share/dots`. To run unreleased checkout code, use `dots dev link ~/dotfiles`; return with `dots dev unlink`.
+Daily commands run from the packaged release under `~/.local/share/dots`. A Git checkout is only needed for contributing or testing unreleased code; see [Developer mode](docs/setup.md#developer-mode).
 
 `mise` must be installed before dots. If Ubuntu already has the apt package, follow [Replacing apt-managed mise](docs/setup.md#replacing-apt-managed-mise) first. The installer is safe to rerun after a failure.
 

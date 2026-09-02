@@ -28,15 +28,39 @@ release_dist="$SANDBOX/dist"
 built_version=$(git -C "$ROOT" show HEAD:version)
 built_archive="dots-$built_version.tar.gz"
 [[ -f $release_dist/$built_archive ]] || fail "release builder emitted no archive"
+[[ -x $release_dist/install.sh ]] || fail "release builder emitted no executable installer"
 [[ $(tar -tzf "$release_dist/$built_archive" | sed -n '1p') == "dots-$built_version/" ]] ||
   fail "release archive has the wrong root"
 built_sha=$(dots_release_sha256 "$release_dist/$built_archive")
 [[ $(awk -v name="$built_archive" '$2 == name || $2 == "*" name { print $1 }' "$release_dist/SHA256SUMS") == "$built_sha" ]] ||
   fail "release checksum does not match the archive"
+built_installer_sha=$(dots_release_sha256 "$release_dist/install.sh")
+[[ $(awk '$2 == "install.sh" || $2 == "*install.sh" { print $1 }' "$release_dist/SHA256SUMS") == "$built_installer_sha" ]] ||
+  fail "release checksum does not describe the installer"
 mapfile -t built_manifest <"$release_dist/dots-release.txt"
 [[ ${built_manifest[*]} == "dots-release-v1 version=$built_version archive=$built_archive sha256=$built_sha" ]] ||
   fail "release manifest does not describe the archive"
-assertions=$((assertions + 4))
+
+# Release artifacts are rendered exclusively from committed inputs, even when
+# their working-tree renderer and template have local edits.
+dirty_build_repo="$SANDBOX/dirty-build-repo"
+dirty_release_dist="$SANDBOX/dirty-dist"
+git clone -q "$ROOT" "$dirty_build_repo"
+printf '\n# dirty template content\n' >>"$dirty_build_repo/scripts/install.sh.tpl"
+printf '\nprintf "# dirty renderer content\\n" >>"$output"\n' >>"$dirty_build_repo/scripts/build-installer.sh"
+"$dirty_build_repo/scripts/build-release.sh" "v$built_version" "$dirty_release_dist" >/dev/null
+cmp -s "$release_dist/$built_archive" "$dirty_release_dist/$built_archive" ||
+  fail "dirty renderer inputs changed the release archive"
+cmp -s "$release_dist/install.sh" "$dirty_release_dist/install.sh" ||
+  fail "dirty renderer inputs changed the generated installer"
+ln -s ../version "$dirty_build_repo/config/release-build-link"
+git -C "$dirty_build_repo" add config/release-build-link
+git -C "$dirty_build_repo" -c user.name=test -c user.email=test@example.com \
+  commit -qm "test unsafe release entry"
+if "$dirty_build_repo/scripts/build-release.sh" "v$built_version" "$SANDBOX/unsafe-dist" >/dev/null 2>&1; then
+  fail "release builder accepted a symlink payload"
+fi
+assertions=$((assertions + 9))
 
 make_release() { # make_release <version>
   local version=$1 build archive sha destination
@@ -68,6 +92,59 @@ export DOTS_RELEASE_BASE_URL="file://$release_server"
 export DOTS_RELEASE_MANIFEST_URL="file://$release_server/latest/download/dots-release.txt"
 
 make_release 1.1.0
+
+# The published installer downloads its pinned archive without Git, verifies it,
+# and hands the same artifact to the packaged transactional installer.
+bootstrap_archive="$release_server/download/v1.1.0/dots-1.1.0.tar.gz"
+cp "$release_dist/$built_archive" "$bootstrap_archive"
+bootstrap_sha=$built_sha
+printf '%s  %s\n' "$bootstrap_sha" dots-1.1.0.tar.gz >"$(dirname -- "$bootstrap_archive")/SHA256SUMS"
+cat >"$release_server/latest/download/dots-release.txt" <<MANIFEST
+dots-release-v1
+version=1.1.0
+archive=dots-1.1.0.tar.gz
+sha256=$bootstrap_sha
+MANIFEST
+bootstrap_installer="$release_dist/install.sh"
+bootstrap_home="$SANDBOX/bootstrap-home"
+bootstrap_tmp="$SANDBOX/bootstrap-tmp"
+mkdir -p "$bootstrap_home" "$bootstrap_tmp"
+bootstrap_home=$(cd -- "$bootstrap_home" && pwd)
+bootstrap_tmp=$(cd -- "$bootstrap_tmp" && pwd)
+cat "$bootstrap_installer" | \
+  HOME="$bootstrap_home" TMPDIR="$bootstrap_tmp" PATH="$SANDBOX/stub:$PATH" \
+  DOTS_RELEASE_BASE_URL="file://$release_server" /bin/bash >/dev/null
+bootstrap_current="$bootstrap_home/.local/share/dots/current"
+[[ $(cat "$bootstrap_home/.config/dots/path") == "$bootstrap_current" ]] || fail "release installer did not select stable mode"
+bootstrap_version_output=$(HOME="$bootstrap_home" DOTS_PATH= "$bootstrap_current/bin/dots-version")
+[[ $bootstrap_version_output == "dots 1.1.0 (stable)" ]] || fail "release installer activated the wrong version"
+[[ ! -e $bootstrap_home/.config/dots/source-path ]] || fail "release installer invented a source checkout"
+[[ -f $bootstrap_home/.local/state/dots/done/install ]] || fail "release installer did not finish convergence"
+shopt -s nullglob
+bootstrap_leftovers=("$bootstrap_tmp"/dots-bootstrap.*)
+shopt -u nullglob
+((${#bootstrap_leftovers[@]} == 0)) || fail "release installer retained its temporary payload"
+
+bad_bootstrap_home="$SANDBOX/bad-bootstrap-home"
+bad_bootstrap_installer="$SANDBOX/bad-install.sh"
+mkdir -p "$bad_bootstrap_home"
+"$ROOT/scripts/build-installer.sh" 1.1.0 dots-1.1.0.tar.gz \
+  0000000000000000000000000000000000000000000000000000000000000000 \
+  "$bad_bootstrap_installer"
+if HOME="$bad_bootstrap_home" PATH="$SANDBOX/stub:$PATH" \
+  DOTS_RELEASE_BASE_URL="file://$release_server" /bin/bash "$bad_bootstrap_installer" >/dev/null 2>&1; then
+  fail "release installer accepted an invalid checksum"
+fi
+[[ ! -e $bad_bootstrap_home/.local/share/dots/current ]] || fail "failed release installer activated a release"
+assertions=$((assertions + 7))
+
+dots_release_download 1.1.0 dots-1.1.0.tar.gz "$bootstrap_sha" || fail "release download failed"
+[[ -f $DOTS_DOWNLOADED_ARCHIVE ]] || fail "release download created no archive"
+[[ ${DOTS_DOWNLOADED_ARCHIVE##*/} == dots-1.1.0.tar.gz.* && $DOTS_DOWNLOADED_ARCHIVE != *XXXXXX* ]] ||
+  fail "release download did not use a randomized trailing mktemp template"
+rm -f "$DOTS_DOWNLOADED_ARCHIVE"
+assertions=$((assertions + 2))
+
 dots_release_install_latest || fail "latest release installation failed"
 [[ -n $DOTS_RELEASE_CHANGED ]] || fail "first release installation reported no change"
 [[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.0" ]] || fail "current release pointer is wrong"
@@ -108,7 +185,12 @@ dots_release_verify_installed "$integrity_release" 1.1.0 || fail "cleaned releas
 if dots_release_validate_version 1234567890.0.0; then
   fail "oversized release version was accepted"
 fi
-assertions=$((assertions + 5))
+if "$ROOT/scripts/build-installer.sh" 01.2.3 dots-01.2.3.tar.gz \
+  0000000000000000000000000000000000000000000000000000000000000000 \
+  "$SANDBOX/noncanonical-install.sh" >/dev/null 2>&1; then
+  fail "installer renderer accepted a noncanonical release version"
+fi
+assertions=$((assertions + 6))
 
 # A pre-existing release-directory symlink is never adopted, even when its
 # target carries internally valid metadata for that version.
@@ -138,6 +220,31 @@ if dots_release_install_archive 9.9.9 "$unsafe_archive" "$unsafe_sha" >/dev/null
 fi
 [[ ! -e $SANDBOX/outside-release-target ]] || fail "unsafe archive wrote outside the release store"
 assertions=$((assertions + 2))
+
+# A crash after immutability but before publication leaves no final path, and a
+# retry publishes that verified tree without disturbing an unverified sibling.
+make_release 1.1.3
+crash_archive="$release_server/download/v1.1.3/dots-1.1.3.tar.gz"
+crash_sha=$(dots_release_sha256 "$crash_archive")
+rc=0
+DOTS_RELEASE_TEST_CRASH_AT=after-release-ready bash -c \
+  'source "$1/install/helpers/files.sh"; source "$1/install/helpers/releases.sh"; dots_release_install_archive "$2" "$3" "$4"' \
+  bash "$ROOT" 1.1.3 "$crash_archive" "$crash_sha" >/dev/null 2>&1 || rc=$?
+((rc > 128)) || fail "release publication crash injection unexpectedly returned $rc"
+[[ ! -e $DOTS_RELEASES_DIR/1.1.3 ]] || fail "interrupted publication exposed a final release"
+shopt -s nullglob
+crash_ready=("$DOTS_RELEASES_DIR/.ready-1.1.3-$crash_sha."*)
+shopt -u nullglob
+((${#crash_ready[@]} == 1)) || fail "interrupted publication did not retain one recoverable tree"
+stale_ready=${crash_ready[0]}
+unverified_ready="$DOTS_RELEASES_DIR/.ready-1.1.3-$crash_sha.unverified"
+mkdir "$unverified_ready"
+printf 'unrelated\n' >"$unverified_ready/sentinel"
+dots_release_install_archive 1.1.3 "$crash_archive" "$crash_sha" || fail "release retry failed after publication crash"
+dots_release_verify_installed "$DOTS_RELEASES_DIR/1.1.3" 1.1.3 || fail "retried release is invalid"
+[[ ! -e $stale_ready ]] || fail "release retry retained the recovered ready tree"
+[[ $(cat "$unverified_ready/sentinel") == "unrelated" ]] || fail "release retry removed an unverified ready tree"
+assertions=$((assertions + 6))
 
 # A bad checksum must not replace the active release.
 make_release 1.1.1
