@@ -26,10 +26,14 @@ archive with `sha256sum -c SHA256SUMS` on Linux or
 ## Installed releases
 
 Stable releases are unpacked into `~/.local/share/dots/releases/<version>`.
-Owned `current` and `previous` symlinks provide atomic activation and runtime
-rollback. The editable checkout is independent and may remain dirty while
-stable `dots update` installs releases.
+Owned `current` and `previous` symlinks provide runtime rollback. Their
+activation and recovery protocol is described in
+[`docs/update-process.md`](update-process.md#activation-and-rollback). The
+editable checkout is independent and may remain dirty while stable
+`dots update` installs releases.
 
 Use `dots version install`, `dots version list`, and `dots version rollback` to
-manage bundles. Use `dots dev link <checkout>` only while testing unreleased
-code, and `dots dev unlink` to return to the stable runtime.
+manage bundles. `dots version list` verifies each candidate's ownership marker
+and complete integrity inventory, and labels unusable candidates `! invalid`.
+Use `dots dev link <checkout>` only while testing unreleased code, and `dots dev
+unlink` to return to the stable runtime.

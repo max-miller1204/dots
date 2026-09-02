@@ -40,6 +40,7 @@ source checkout.
 | Path | Purpose |
 | --- | --- |
 | `~/.local/state/dots/update.lock` | Update lock file, held via flock(1) on an inherited fd. Parent symlinks are refused, and the append-open fd's inode is checked against the still-regular path before the PID breadcrumb is written through the fd itself. Internal stages reverify the fd. The file persists between runs; the kernel owns the lock. Override with a path under `$HOME` via `DOTS_UPDATE_LOCK`. |
+| `~/.local/share/dots/.pointer-transaction` | Durable record of the pre-activation `current` and `previous` releases plus the intended target. Any locked pointer operation reconciles an interrupted transition before reading or changing the pointers. |
 | `~/.local/state/dots/update-prev-incomplete` | One-shot warning published before an incomplete transcript is rotated to `.prev`, so a crash at either boundary remains reportable; removed after the warning is printed, allowing harmless replay after interruption. |
 | `~/.local/state/dots/update-orderly-exit` | Temporary one-line status evidence atomically published by an orderly transcribed child. The locked outer stage promotes valid surviving evidence before classifying the prior transcript, and normally accepts it only when it matches `script(1)`'s status. It is never terminal evidence by itself. |
 | `~/.local/state/dots/update-terminal-status` | Out-of-band terminal sidecar promoted by the locked outer stage only from matching orderly-exit evidence after `script(1)` returns and closes the transcript. A crashed or signaled child remains unmarked. |
@@ -79,9 +80,14 @@ login check, or a scheduled job as you like.
 ## Activation and rollback
 
 Release archives are verified before their immutable directory is published.
-The updater records the old release as `previous`, atomically switches
-`current`, then securely re-execs the new updater while retaining the update
-lock. Failures before activation leave the current release unchanged.
+While holding the update lock, activation first records the old pointer state
+and intended target in a durable transaction, then replaces `previous` and
+`current` individually. Every operation that can read, reconcile, or mutate
+these pointers holds the same lock. If activation is interrupted, the next such
+operation either recognizes the completed pair or restores both old pointers,
+so the prior rollback target remains recoverable. After activation, stable
+update and version-install commands securely re-exec the new runtime while
+retaining the lock through tool and migration convergence.
 
 `dots version rollback` swaps the runtime pointers, but deliberately does not
 undo migrations, copied configuration, or mise upgrades.

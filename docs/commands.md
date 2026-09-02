@@ -8,9 +8,9 @@ Run `dots` for the complete generated command listing or `dots help <group>` for
 | `dots install --developer` | Install directly from the current checkout |
 | `dots update` | Update the stable release or dev checkout, then tools and migrations |
 | `dots update available` | Report a published release or pending dev commits |
-| `dots version install [version]` | Install and activate a stable release |
-| `dots version adopt` | Move a checkout-backed install to stable releases |
-| `dots version list` | List installed releases (`*` current, `-` previous) |
+| `dots version install [version]` | Install and activate a release, then converge tools and migrations |
+| `dots version adopt` | Move a checkout-backed install to stable and converge it |
+| `dots version list` | List releases (`*` current, `-` previous, `!` invalid) |
 | `dots version rollback` | Switch the runtime back to the previous release |
 | `dots dev link <checkout>` | Use an editable checkout as the active runtime |
 | `dots dev unlink` | Return to the current stable release |

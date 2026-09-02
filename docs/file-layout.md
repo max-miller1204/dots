@@ -9,8 +9,9 @@ units, the Quickshell desktop).
 
 Stable dots runs from immutable GitHub release bundles, not from the editable
 checkout. Releases live under `~/.local/share/dots/releases/<version>/`, with
-atomic `current` and `previous` symlinks. The checkout at `~/dotfiles` remains
-an optional authoring tree, recorded separately in `~/.config/dots/source-path`.
+transaction-protected `current` and `previous` symlinks. The checkout at
+`~/dotfiles` remains an optional authoring tree, recorded separately in
+`~/.config/dots/source-path`.
 `dots dev link` explicitly makes that checkout the runtime; `dots dev unlink`
 returns to the stable `current` release.
 
@@ -63,7 +64,9 @@ themes/<name>/colors.toml  →  staged + rendered by dots-theme-set
 
 ## State vs config
 
-- `~/.local/share/dots/` — owned release store: immutable `releases/<version>/` trees and atomic `current`/`previous` pointers.
+- `~/.local/share/dots/` — owned release store: immutable
+  `releases/<version>/` trees, `current`/`previous` pointers, and durable
+  pointer-transaction recovery state.
 - `~/.local/state/dots/` — machine state, never versioned: migration markers
   (`migrations/`), done markers (`done/`), immutable theme generations
   (`theme-generations/`), atomic active/previous pointers (`current`,
