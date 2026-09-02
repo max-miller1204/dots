@@ -1,0 +1,11 @@
++ ./test/install:43: stock_bash_major=3
++ ./test/install:63: /bin/bash '/var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T//dots-test.edYIUG/repo space '\''quote $dollar `tick/bin/dots-install' --developer
++ ./test/install:67: grep -qx 'install bash' /var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T//dots-test.edYIUG/brew-calls
++ ./test/install:97: DOTS_TEST_HOMEBREW_BIN=/var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T//dots-test.edYIUG/fallback-home/homebrew/bin/brew
++ ./test/install:97: /bin/bash '/var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T//dots-test.edYIUG/repo space '\''quote $dollar `tick/bin/dots-install' --developer
++ ./test/install:101: [[ -f /var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T//dots-test.edYIUG/fallback-home/.local/state/dots/done/install ]]
++ ./test/install:102: [[ ! -e /var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T//dots-test.edYIUG/fallback-home/unexpected-brew-install ]]
++ ./test/install:221: bash -c 'source "$1"' bash /Users/maxmiller/.no-mistakes/worktrees/e030e65a1343/01M1G98J44TEC9D2K8SWRJYVT3/install/config/macos.sh
++ ./test/install:223: [[ ! -e /var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T//dots-test.edYIUG/login-shell-changed ]]
++ ./test/install:226: echo 'ok: 28 assertions passed (install)'
+ok: 28 assertions passed (install)
