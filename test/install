@@ -39,7 +39,7 @@ chmod +x "$stub/mise"
 # Launch from outside the checkout; mise must still see the seeded live manifest.
 (
   cd /
-  PATH="$stub:$runtime_path" "$repo/bin/dots-install" >/dev/null
+  PATH="$stub:$runtime_path" "$repo/bin/dots-install" --developer >/dev/null
 )
 [[ -f "$HOME/.config/mise/config.toml" ]] || fail "fresh install did not seed mise manifest"
 grep -q '^install$' "$HOME/mise-calls" || fail "fresh install did not run mise after seeding"
@@ -50,6 +50,15 @@ grep -q '^install$' "$HOME/mise-calls" || fail "fresh install did not run mise a
 [[ -f "$HOME/.config/$newline_parent/file" ]] || fail "fresh install split a newline-bearing config directory"
 assertions=$((assertions + 7))
 
+# Re-running install applies migrations that arrived after the first install.
+cat >"$repo/migrations/2999999999.sh" <<'MIGRATION'
+printf 'ran\n' >"$HOME/install-rerun-migration"
+MIGRATION
+PATH="$stub:$runtime_path" "$repo/bin/dots-install" --developer >/dev/null
+[[ -f $HOME/install-rerun-migration ]] || fail "install rerun left a pending migration unapplied"
+[[ -f $HOME/.local/state/dots/migrations/2999999999.sh ]] || fail "install rerun did not mark its migration"
+assertions=$((assertions + 2))
+
 # A package convergence failure aborts and never creates the install marker.
 failed_home="$SANDBOX/failed-home"
 mkdir -p "$failed_home" "$SANDBOX/failing-stub"
@@ -59,7 +68,7 @@ exit 23
 MISE
 chmod +x "$SANDBOX/failing-stub/mise"
 if HOME="$failed_home" PATH="$SANDBOX/failing-stub:$runtime_path" \
-  "$repo/bin/dots-install" >/dev/null 2>&1; then
+  "$repo/bin/dots-install" --developer >/dev/null 2>&1; then
   fail "install succeeded after mise failed"
 fi
 [[ ! -e "$failed_home/.local/state/dots/done/install" ]] || fail "failed install was marked complete"
@@ -70,7 +79,7 @@ linked_home="$SANDBOX/linked-home"
 linked_target="$SANDBOX/linked-config-target"
 mkdir -p "$linked_home" "$linked_target"
 ln -s "$linked_target" "$linked_home/.config"
-if HOME="$linked_home" PATH="$stub:$runtime_path" "$repo/bin/dots-install" >/dev/null 2>&1; then
+if HOME="$linked_home" PATH="$stub:$runtime_path" "$repo/bin/dots-install" --developer >/dev/null 2>&1; then
   fail "install accepted a symlinked .config parent"
 fi
 [[ ! -e "$linked_target/dots/path" ]] || fail "install wrote through symlinked .config"
@@ -81,7 +90,7 @@ linked_state_home="$SANDBOX/linked-state-home"
 linked_state_target="$SANDBOX/linked-state-target"
 mkdir -p "$linked_state_home" "$linked_state_target"
 ln -s "$linked_state_target" "$linked_state_home/.local"
-if HOME="$linked_state_home" PATH="$stub:$runtime_path" "$repo/bin/dots-install" >/dev/null 2>&1; then
+if HOME="$linked_state_home" PATH="$stub:$runtime_path" "$repo/bin/dots-install" --developer >/dev/null 2>&1; then
   fail "install accepted a symlinked state parent"
 fi
 [[ ! -e "$linked_state_target/state/dots/install.log" ]] || fail "install logged through symlinked state parent"
@@ -92,7 +101,7 @@ linked_log_home="$SANDBOX/linked-log-home"
 mkdir -p "$linked_log_home/.local/state/dots"
 printf 'foreign log\n' >"$SANDBOX/foreign-install-log"
 ln -s "$SANDBOX/foreign-install-log" "$linked_log_home/.local/state/dots/install.log"
-if HOME="$linked_log_home" PATH="$stub:$runtime_path" "$repo/bin/dots-install" >/dev/null 2>&1; then
+if HOME="$linked_log_home" PATH="$stub:$runtime_path" "$repo/bin/dots-install" --developer >/dev/null 2>&1; then
   fail "install accepted a symlinked log file"
 fi
 [[ $(cat "$SANDBOX/foreign-install-log") == "foreign log" ]] || fail "install wrote through log symlink"
@@ -101,7 +110,7 @@ assertions=$((assertions + 2))
 linked_done_home="$SANDBOX/linked-done-home"
 mkdir -p "$linked_done_home/.local/state/dots/done"
 ln -s "$SANDBOX/dangling-install-done" "$linked_done_home/.local/state/dots/done/install"
-if HOME="$linked_done_home" PATH="$stub:$runtime_path" "$repo/bin/dots-install" >/dev/null 2>&1; then
+if HOME="$linked_done_home" PATH="$stub:$runtime_path" "$repo/bin/dots-install" --developer >/dev/null 2>&1; then
   fail "install accepted a symlinked completion marker"
 fi
 [[ ! -e "$SANDBOX/dangling-install-done" ]] || fail "install created completion marker target"
@@ -113,7 +122,7 @@ bad_repo="$SANDBOX/repo:invalid"
 cp -R "$repo" "$bad_repo"
 bad_home="$SANDBOX/bad-home"
 mkdir -p "$bad_home"
-if HOME="$bad_home" PATH="$stub:$runtime_path" "$bad_repo/bin/dots-install" >/dev/null 2>&1; then
+if HOME="$bad_home" PATH="$stub:$runtime_path" "$bad_repo/bin/dots-install" --developer >/dev/null 2>&1; then
   fail "install accepted a colon-delimited checkout path"
 fi
 [[ ! -e "$bad_home/.local/state/dots/done/install" ]] || fail "invalid-path install was marked complete"

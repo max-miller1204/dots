@@ -1,0 +1,52 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install Homebrew bash and flock
+        if: runner.os == 'macOS'
+        run: brew install bash flock
+
+      - name: Run test suites
+        run: ./test/all
+
+      - name: Build and smoke-test release artifact
+        run: ./scripts/build-release.sh "$GITHUB_REF_NAME" "${RUNNER_TEMP}/dist"
+
+  publish:
+    needs: test
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Build release artifacts
+        run: ./scripts/build-release.sh "$GITHUB_REF_NAME"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/dots-${GITHUB_REF_NAME#v}.tar.gz" \
+            dist/SHA256SUMS \
+            dist/dots-release.txt \
+            --verify-tag \
+            --generate-notes \
+            --title "$GITHUB_REF_NAME"

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+# dots:summary=List installed dots releases
+
+set -eo pipefail
+
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-version-list" "$@"; fi
+source "$DOTS_PATH/install/helpers/files.sh"
+source "$DOTS_PATH/install/helpers/releases.sh"
+
+(($# == 0)) || {
+  echo "Usage: dots version list" >&2
+  exit 1
+}
+if ! dots_release_lock_fd_valid; then
+  exec "$SELF_DIR/dots-update-lock" "$0" "$@"
+fi
+current=$(dots_release_pointer_version "$DOTS_RELEASE_CURRENT" 2>/dev/null) || current=""
+previous=$(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS" 2>/dev/null) || previous=""
+found=0
+if [[ -d $DOTS_RELEASES_DIR && ! -L $DOTS_RELEASES_DIR ]]; then
+  shopt -s nullglob
+  releases=("$DOTS_RELEASES_DIR"/*)
+  shopt -u nullglob
+  for release in "${releases[@]}"; do
+    version=${release##*/}
+    dots_release_validate_version "$version" || continue
+    if [[ ! -d $release || -L $release ]] ||
+      ! dots_release_verify_installed "$release" "$version" >/dev/null 2>&1; then
+      printf '! %s (invalid)\n' "$version"
+      found=1
+      continue
+    fi
+    marker=" "
+    [[ $version == "$current" ]] && marker="*"
+    [[ $version == "$previous" && $version != "$current" ]] && marker="-"
+    printf '%s %s\n' "$marker" "$version"
+    found=1
+  done
+fi
+((found == 1)) || echo "No dots releases installed."

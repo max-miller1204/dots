@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+# dots:summary=Use an editable checkout as the active dots runtime
+# dots:args=<checkout>
+# dots:examples=dots dev link ~/dotfiles
+
+set -eo pipefail
+
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-dev-link" "$@"; fi
+source "$DOTS_PATH/install/helpers/files.sh"
+source "$DOTS_PATH/install/helpers/releases.sh"
+
+(($# == 1)) || {
+  echo "Usage: dots dev link <checkout>" >&2
+  exit 1
+}
+if ! dots_release_lock_fd_valid; then
+  exec "$SELF_DIR/dots-update-lock" "$0" "$@"
+fi
+checkout=$(cd -- "$1" && pwd -P) || exit 1
+for required in bin config default install migrations themes version; do
+  [[ -e $checkout/$required ]] || {
+    echo "Checkout does not look like dots (missing $required): $checkout" >&2
+    exit 1
+  }
+done
+git -C "$checkout" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+  echo "Not a Git checkout: $checkout" >&2
+  exit 1
+}
+dots_release_write_source_path "$checkout"
+dots_release_write_path "$checkout"
+echo "Linked dots developer runtime to $checkout."
+echo "Run 'dots dev unlink' to return to stable releases."

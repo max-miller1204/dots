@@ -25,14 +25,18 @@ if [[ $config_file == /* || $config_file == *..* ]]; then
 fi
 
 src="$HOME/.config/$config_file"
-dest="$DOTS_PATH/config/$config_file"
+if ! source_path=$("$SELF_DIR/dots-source-resolve"); then
+  echo "Config import needs an editable source checkout." >&2
+  exit 1
+fi
+dest="$source_path/config/$config_file"
 
 if [[ ! -f $src ]]; then
   echo "No such file: $src" >&2
   exit 1
 fi
 
-dots_file_replace "$src" "$dest" discard "$DOTS_PATH"
+dots_file_replace "$src" "$dest" discard "$source_path"
 
-echo "Imported ~/.config/$config_file into $DOTS_PATH/config/$config_file"
-echo "Review and commit it: git -C \"$DOTS_PATH\" add \"config/$config_file\""
+echo "Imported ~/.config/$config_file into $source_path/config/$config_file"
+echo "Review and commit it: git -C \"$source_path\" add \"config/$config_file\""

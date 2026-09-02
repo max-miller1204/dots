@@ -13,7 +13,7 @@ git add config/mise/config.toml
 git commit -m "Add ripgrep"
 ```
 
-`dots pkg add` is a wrapper around `mise use --global`. Importing the live config makes the change part of the repository defaults. After that commit is shared, `dots update` on another machine installs it.
+`dots pkg add` is a wrapper around `mise use --global`. Importing the live config writes it into the registered editable checkout. After the change is committed and published in a dots release, `dots update` installs it on stable machines.
 
 ## Remove a tool
 

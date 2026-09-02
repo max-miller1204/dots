@@ -54,8 +54,8 @@ if [[ -n $hb_prefix ]]; then
 fi
 unset hb_prefix
 
-# Unlike omarchy (whose binaries ship to /usr/bin via a package), the checkout
-# is the install here, so bin/ is always prepended.
+# The active immutable release (or explicitly linked developer checkout) owns
+# the command tree, so its bin/ is always prepended.
 case ":$PATH:" in
   *":${DOTS_PATH%/}/bin:"*) ;;
   *) PATH="${DOTS_PATH%/}/bin${PATH:+:$PATH}" ;;

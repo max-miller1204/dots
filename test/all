@@ -9,6 +9,7 @@ ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 "$ROOT/test/cli"
 "$ROOT/test/completion"
 "$ROOT/test/install"
+"$ROOT/test/release"
 "$ROOT/test/update"
 
 echo "all suites passed"

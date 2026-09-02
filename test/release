@@ -1,0 +1,320 @@
+#!/usr/bin/env bash
+
+# Immutable release installation, activation, rollback, and dev-link suite.
+
+set -eo pipefail
+
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+source "$ROOT/test/helpers.sh"
+setup_sandbox
+export GIT_CONFIG_GLOBAL="$SANDBOX/gitconfig"
+: >"$GIT_CONFIG_GLOBAL"
+
+release_server="$SANDBOX/releases"
+mkdir -p "$release_server/latest/download" "$SANDBOX/stub"
+cat >"$SANDBOX/stub/mise" <<'MISE'
+#!/usr/bin/env bash
+exit 0
+MISE
+chmod +x "$SANDBOX/stub/mise"
+export PATH="$SANDBOX/stub:$PATH"
+source "$ROOT/install/helpers/files.sh"
+source "$ROOT/install/helpers/releases.sh"
+
+# The release builder emits the archive, checksum list, and latest-release
+# manifest consumed by stable installations.
+release_dist="$SANDBOX/dist"
+"$ROOT/scripts/build-release.sh" "v$(git -C "$ROOT" show HEAD:version)" "$release_dist" >/dev/null
+built_version=$(git -C "$ROOT" show HEAD:version)
+built_archive="dots-$built_version.tar.gz"
+[[ -f $release_dist/$built_archive ]] || fail "release builder emitted no archive"
+[[ $(tar -tzf "$release_dist/$built_archive" | sed -n '1p') == "dots-$built_version/" ]] ||
+  fail "release archive has the wrong root"
+built_sha=$(dots_release_sha256 "$release_dist/$built_archive")
+[[ $(awk -v name="$built_archive" '$2 == name || $2 == "*" name { print $1 }' "$release_dist/SHA256SUMS") == "$built_sha" ]] ||
+  fail "release checksum does not match the archive"
+mapfile -t built_manifest <"$release_dist/dots-release.txt"
+[[ ${built_manifest[*]} == "dots-release-v1 version=$built_version archive=$built_archive sha256=$built_sha" ]] ||
+  fail "release manifest does not describe the archive"
+assertions=$((assertions + 4))
+
+make_release() { # make_release <version>
+  local version=$1 build archive sha destination
+  build=$(mktemp -d "$SANDBOX/build-$version.XXXXXX")
+  mkdir -p "$build/dots-$version"
+  cp -R "$ROOT/bin" "$ROOT/config" "$ROOT/default" "$ROOT/install" \
+    "$ROOT/migrations" "$ROOT/themes" "$build/dots-$version/"
+  printf '%s\n' "$version" >"$build/dots-$version/version"
+  archive="$build/dots-$version.tar.gz"
+  COPYFILE_DISABLE=1 tar -czf "$archive" -C "$build" "dots-$version"
+  sha=$(if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$archive" | awk '{ print $1 }'
+  else
+    shasum -a 256 "$archive" | awk '{ print $1 }'
+  fi)
+  destination="$release_server/download/v$version"
+  mkdir -p "$destination"
+  cp "$archive" "$destination/dots-$version.tar.gz"
+  printf '%s  %s\n' "$sha" "dots-$version.tar.gz" >"$destination/SHA256SUMS"
+  cat >"$release_server/latest/download/dots-release.txt" <<MANIFEST
+dots-release-v1
+version=$version
+archive=dots-$version.tar.gz
+sha256=$sha
+MANIFEST
+}
+
+export DOTS_RELEASE_BASE_URL="file://$release_server"
+export DOTS_RELEASE_MANIFEST_URL="file://$release_server/latest/download/dots-release.txt"
+
+make_release 1.1.0
+dots_release_install_latest || fail "latest release installation failed"
+[[ -n $DOTS_RELEASE_CHANGED ]] || fail "first release installation reported no change"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.0" ]] || fail "current release pointer is wrong"
+[[ $(cat "$HOME/.config/dots/path") == "$DOTS_RELEASE_CURRENT" ]] || fail "stable path was not recorded"
+out=$("$ROOT/bin/dots-version")
+assert_contains "$out" "dots 1.1.0 (stable)" "stable version output"
+assertions=$((assertions + 3))
+
+# Installed payload integrity is checked before a release can be reused.
+integrity_release="$DOTS_RELEASES_DIR/1.1.0"
+integrity_probe="$integrity_release/bin/dots-version"
+integrity_backup="$SANDBOX/dots-version.backup"
+cp -p "$integrity_probe" "$integrity_backup"
+chmod u+w "$integrity_probe"
+printf '\n# modified\n' >>"$integrity_probe"
+out=$("$ROOT/bin/dots-version-list")
+assert_contains "$out" "! 1.1.0 (invalid)" "version list labels a modified release invalid"
+case "$out" in
+  *"* 1.1.0"*) fail "version list treated a modified release as current" ;;
+esac
+assertions=$((assertions + 1))
+if dots_release_verify_installed "$integrity_release" 1.1.0 >/dev/null 2>&1; then
+  fail "modified installed release passed integrity verification"
+fi
+cat "$integrity_backup" >"$integrity_probe"
+chmod a-w "$integrity_probe"
+dots_release_verify_installed "$integrity_release" 1.1.0 || fail "restored release failed integrity verification"
+chmod u+w "$integrity_release/bin"
+printf 'unexpected\n' >"$integrity_release/bin/unexpected-command"
+chmod a-w "$integrity_release/bin/unexpected-command" "$integrity_release/bin"
+if dots_release_verify_installed "$integrity_release" 1.1.0 >/dev/null 2>&1; then
+  fail "installed release accepted an unexpected file"
+fi
+chmod u+w "$integrity_release/bin"
+rm "$integrity_release/bin/unexpected-command"
+chmod a-w "$integrity_release/bin"
+dots_release_verify_installed "$integrity_release" 1.1.0 || fail "cleaned release failed integrity verification"
+if dots_release_validate_version 1234567890.0.0; then
+  fail "oversized release version was accepted"
+fi
+assertions=$((assertions + 5))
+
+# A pre-existing release-directory symlink is never adopted, even when its
+# target carries internally valid metadata for that version.
+external_release="$SANDBOX/external-release"
+cp -R "$integrity_release" "$external_release"
+chmod -R u+w "$external_release"
+printf '1.1.2\n' >"$external_release/version"
+rm -f "$external_release/.dots-release" "$external_release/.dots-release-integrity"
+dots_release_write_integrity "$external_release" 1.1.2
+chmod -R a-w "$external_release"
+ln -s "$external_release" "$DOTS_RELEASES_DIR/1.1.2"
+if dots_release_activate 1.1.2 >/dev/null 2>&1; then
+  fail "release activation accepted a symlinked version directory"
+fi
+rm "$DOTS_RELEASES_DIR/1.1.2"
+assertions=$((assertions + 1))
+
+# Link and special archive entries are rejected before extraction.
+unsafe_build="$SANDBOX/unsafe-build"
+mkdir -p "$unsafe_build/dots-9.9.9"
+ln -s "$SANDBOX/outside-release-target" "$unsafe_build/dots-9.9.9/escape"
+unsafe_archive="$SANDBOX/dots-9.9.9.tar.gz"
+tar -czf "$unsafe_archive" -C "$unsafe_build" dots-9.9.9
+unsafe_sha=$(dots_release_sha256 "$unsafe_archive")
+if dots_release_install_archive 9.9.9 "$unsafe_archive" "$unsafe_sha" >/dev/null 2>&1; then
+  fail "release installation accepted a symlink archive entry"
+fi
+[[ ! -e $SANDBOX/outside-release-target ]] || fail "unsafe archive wrote outside the release store"
+assertions=$((assertions + 2))
+
+# A bad checksum must not replace the active release.
+make_release 1.1.1
+cp "$release_server/latest/download/dots-release.txt" "$SANDBOX/good-manifest"
+awk 'BEGIN { zeros = sprintf("%064d", 0) } /^sha256=/ { print "sha256=" zeros; next } { print }' \
+  "$SANDBOX/good-manifest" >"$release_server/latest/download/dots-release.txt"
+rc=0
+"$DOTS_RELEASE_CURRENT/bin/dots-version-install" latest >/dev/null 2>&1 || rc=$?
+((rc != 0)) || fail "release installation accepted a bad checksum"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.0" ]] || fail "bad release changed current"
+cp "$SANDBOX/good-manifest" "$release_server/latest/download/dots-release.txt"
+assertions=$((assertions + 2))
+
+real_flock=$(command -v flock)
+export DOTS_TEST_REAL_FLOCK=$real_flock
+cat >"$SANDBOX/stub/flock" <<'FLOCK'
+#!/usr/bin/env bash
+if [[ -n ${DOTS_TEST_FLOCK_TRACE:-} && " $* " == *" -E "* ]]; then
+  printf 'acquire\n' >>"$DOTS_TEST_FLOCK_TRACE"
+fi
+exec "$DOTS_TEST_REAL_FLOCK" "$@"
+FLOCK
+chmod +x "$SANDBOX/stub/flock"
+install_lock_trace="$SANDBOX/version-install-lock-trace"
+DOTS_TEST_REAL_FLOCK="$real_flock" DOTS_TEST_FLOCK_TRACE="$install_lock_trace" \
+  "$DOTS_RELEASE_CURRENT/bin/dots-version-install" latest >/dev/null
+[[ $(wc -l <"$install_lock_trace") -eq 1 ]] || fail "version install reacquired its update lock"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.1" ]] || fail "second release was not activated"
+first_migration=""
+for migration in "$DOTS_RELEASE_CURRENT"/migrations/*.sh; do
+  [[ -f $migration ]] || continue
+  first_migration=$migration
+  break
+done
+[[ -z $first_migration || -f "$HOME/.local/state/dots/migrations/$(basename "$first_migration")" ]] || fail "version install did not run pending migrations"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS") == "1.1.0" ]] || fail "previous release was not retained"
+
+rc=0
+DOTS_RELEASE_TEST_FAIL_AT=after-previous dots_release_activate 1.1.0 >/dev/null 2>&1 || rc=$?
+((rc == 86)) || fail "pointer failure injection returned $rc instead of 86"
+[[ $(readlink "$DOTS_RELEASE_CURRENT") == "releases/1.1.1" ]] || fail "failed activation changed current"
+[[ $(readlink "$DOTS_RELEASE_PREVIOUS") == "releases/1.1.1" ]] || fail "failure injection did not reach partial pointer state"
+[[ -f $DOTS_RELEASE_POINTER_TRANSACTION ]] || fail "failed activation left no recovery transaction"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.1" ]] || fail "failed activation did not restore current"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS") == "1.1.0" ]] || fail "failed activation lost the prior rollback target"
+[[ ! -e $DOTS_RELEASE_POINTER_TRANSACTION ]] || fail "recovered activation retained its transaction"
+
+rc=0
+DOTS_RELEASE_TEST_CRASH_AT=after-current bash -c \
+  'source "$1/install/helpers/files.sh"; source "$1/install/helpers/releases.sh"; dots_release_activate 1.1.0' \
+  bash "$ROOT" >/dev/null 2>&1 || rc=$?
+((rc > 128)) || fail "pointer crash injection unexpectedly returned $rc"
+[[ -f $DOTS_RELEASE_POINTER_TRANSACTION ]] || fail "interrupted activation left no recovery transaction"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.0" ]] || fail "completed pointer transition was not recovered"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS") == "1.1.1" ]] || fail "completed transition lost its rollback target"
+[[ ! -e $DOTS_RELEASE_POINTER_TRANSACTION ]] || fail "completed recovery retained its transaction"
+dots_release_activate 1.1.1 || fail "could not restore release state after recovery checks"
+assertions=$((assertions + 12))
+
+DOTS_RELEASE_TEST_PAUSE_AT=after-previous \
+  "$DOTS_RELEASE_CURRENT/bin/dots-version-rollback" >/dev/null &
+transition_pid=$!
+transition_state=""
+for _ in {1..100}; do
+  transition_state=$(ps -o stat= -p "$transition_pid" 2>/dev/null) || transition_state=""
+  [[ $transition_state == *T* ]] && break
+  sleep 0.02
+done
+[[ $transition_state == *T* ]] || fail "release transition did not pause while locked"
+rc=0
+"$DOTS_RELEASE_CURRENT/bin/dots-version-list" >/dev/null 2>&1 || rc=$?
+paused_current=$(readlink "$DOTS_RELEASE_CURRENT")
+paused_previous=$(readlink "$DOTS_RELEASE_PREVIOUS")
+paused_transaction=""
+[[ -f $DOTS_RELEASE_POINTER_TRANSACTION ]] && paused_transaction=1
+kill -CONT "$transition_pid"
+transition_rc=0
+wait "$transition_pid" || transition_rc=$?
+((rc != 0)) || fail "version list reconciled a concurrent release transition"
+[[ $paused_current == "releases/1.1.1" ]] || fail "concurrent list changed current"
+[[ $paused_previous == "releases/1.1.1" ]] || fail "concurrent list changed the partial previous pointer"
+[[ -n $paused_transaction ]] || fail "concurrent list removed the active transaction"
+((transition_rc == 0)) || fail "paused release transition did not complete"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.0" ]] || fail "resumed release transition did not activate its target"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS") == "1.1.1" ]] || fail "resumed release transition lost its rollback target"
+dots_release_activate 1.1.1 || fail "could not restore release state after concurrency check"
+assertions=$((assertions + 8))
+
+# Every command that moves an active pointer shares the update lock.
+"$DOTS_RELEASE_CURRENT/bin/dots-update-lock" sleep 30 &
+lock_pid=$!
+for _ in {1..100}; do
+  holder=$(tail -n 1 "$HOME/.local/state/dots/update.lock" 2>/dev/null) || holder=""
+  [[ ${holder//[^0-9]/} == "$lock_pid" ]] && break
+  sleep 0.02
+done
+[[ ${holder//[^0-9]/} == "$lock_pid" ]] || fail "release command never acquired the update lock"
+rc=0
+"$DOTS_RELEASE_CURRENT/bin/dots-version-rollback" >/dev/null 2>&1 || rc=$?
+((rc != 0)) || fail "rollback bypassed the held update lock"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.1" ]] || fail "contended rollback changed current"
+kill -TERM "$lock_pid" 2>/dev/null || true
+wait "$lock_pid" 2>/dev/null || true
+
+"$DOTS_RELEASE_CURRENT/bin/dots-version-rollback" >/dev/null
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.0" ]] || fail "rollback did not switch current"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS") == "1.1.1" ]] || fail "rollback did not preserve the newer release"
+assertions=$((assertions + 5))
+
+# Stable update checks compare release metadata instead of requiring Git.
+rc=0
+out=$("$DOTS_RELEASE_CURRENT/bin/dots-update-available") || rc=$?
+((rc == 0)) || fail "stable update check did not report the newer release"
+assert_contains "$out" "1.1.1 is available" "stable release availability"
+
+# A failed continuation preflight restores the prior release before any new
+# migrations run.
+rc=0
+DOTS_UPDATE_TEST_FAIL_REEXEC=1 DOTS_UPDATE_MIN_FREE_KB=1 \
+  "$DOTS_RELEASE_CURRENT/bin/dots-update" >/dev/null 2>&1 || rc=$?
+((rc == 2)) || fail "failed updater continuation returned $rc instead of 2"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.0" ]] || fail "failed updater continuation did not roll back"
+assertions=$((assertions + 2))
+
+# A full stable update activates and continues from the new release while the
+# existing transcript lock remains held.
+mkdir -p "$HOME/.local/state/dots/migrations"
+for migration in "$DOTS_RELEASE_CURRENT"/migrations/*.sh; do
+  [[ -f $migration ]] || continue
+  touch "$HOME/.local/state/dots/migrations/$(basename "$migration")"
+done
+out=$(PATH="$SANDBOX/stub:$PATH" DOTS_UPDATE_MIN_FREE_KB=1 "$DOTS_RELEASE_CURRENT/bin/dots-update")
+assert_contains "$out" "Activated dots 1.1.1" "stable update activation"
+assert_contains "$out" "Update complete." "stable update completion"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.1" ]] || fail "stable update did not activate the release"
+"$DOTS_RELEASE_CURRENT/bin/dots-version-rollback" >/dev/null
+assertions=$((assertions + 1))
+
+# The editable source is independent from the packaged runtime.
+source_checkout="$SANDBOX/source-checkout"
+git clone -q "$ROOT" "$source_checkout"
+cp -R "$ROOT/bin" "$ROOT/config" "$ROOT/default" "$ROOT/install" \
+  "$ROOT/migrations" "$ROOT/themes" "$ROOT/version" "$source_checkout/"
+source_checkout=$(cd -- "$source_checkout" && pwd -P)
+"$DOTS_RELEASE_CURRENT/bin/dots-dev-link" "$source_checkout" >/dev/null
+[[ $(cat "$HOME/.config/dots/path") == "$source_checkout" ]] || fail "dev link did not switch the runtime path"
+[[ $(cat "$HOME/.config/dots/source-path") == "$source_checkout" ]] || fail "dev link did not record the source checkout"
+printf 'dirty\n' >"$source_checkout/untracked-local"
+out=$("$DOTS_RELEASE_CURRENT/bin/dots-version")
+assert_contains "$out" "(dev " "developer version output"
+adopt_lock_trace="$SANDBOX/version-adopt-lock-trace"
+DOTS_TEST_REAL_FLOCK="$real_flock" DOTS_TEST_FLOCK_TRACE="$adopt_lock_trace" \
+  "$source_checkout/bin/dots-version-adopt" >/dev/null
+[[ $(wc -l <"$adopt_lock_trace") -eq 1 ]] || fail "version adopt reacquired its update lock"
+[[ $(cat "$HOME/.config/dots/path") == "$DOTS_RELEASE_CURRENT" ]] || fail "version adopt did not restore stable mode"
+assertions=$((assertions + 4))
+
+mkdir -p "$HOME/.config/example"
+printf 'live config\n' >"$HOME/.config/example/config.toml"
+"$DOTS_RELEASE_CURRENT/bin/dots-config-import" example/config.toml >/dev/null
+[[ $(cat "$source_checkout/config/example/config.toml") == "live config" ]] || fail "config import did not target the source checkout"
+[[ ! -e "$DOTS_RELEASE_CURRENT/config/example/config.toml" ]] || fail "config import mutated an installed release"
+assertions=$((assertions + 2))
+
+# Fresh installs default to the stable bundle while retaining the clone only as
+# their editable source tree.
+stable_home="$SANDBOX/stable-home"
+mkdir -p "$stable_home"
+stable_home=$(cd -- "$stable_home" && pwd)
+HOME="$stable_home" PATH="$SANDBOX/stub:$PATH" \
+  DOTS_RELEASE_BASE_URL="$DOTS_RELEASE_BASE_URL" \
+  DOTS_RELEASE_MANIFEST_URL="$DOTS_RELEASE_MANIFEST_URL" \
+  "$ROOT/bin/dots-install" >/dev/null
+stable_current="$stable_home/.local/share/dots/current"
+[[ $(cat "$stable_home/.config/dots/path") == "$stable_current" ]] || fail "fresh install did not select stable mode"
+[[ $(cat "$stable_home/.config/dots/source-path") == "$(cd -- "$ROOT" && pwd -P)" ]] || fail "fresh install did not retain the source checkout"
+[[ -x $stable_current/bin/dots ]] || fail "fresh install has no active release command"
+assertions=$((assertions + 3))
+
+echo "ok: $assertions assertions passed (release)"

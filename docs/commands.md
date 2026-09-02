@@ -4,13 +4,20 @@ Run `dots` for the complete generated command listing or `dots help <group>` for
 
 | Command | Purpose |
 | --- | --- |
-| `dots install` | Run first-time package, config, shell, and theme setup |
-| `dots update` | Update the checkout, tools, migrations, and hooks |
-| `dots update available` | Report pending commits |
+| `dots install` | Install the latest stable runtime, configs, shell, and tools |
+| `dots install --developer` | Install directly from the current checkout |
+| `dots update` | Update the stable release or dev checkout, then tools and migrations |
+| `dots update available` | Report a published release or pending dev commits |
+| `dots version install [version]` | Install and activate a release, then converge tools and migrations |
+| `dots version adopt` | Move a checkout-backed install to stable and converge it |
+| `dots version list` | List releases (`*` current, `-` previous, `!` invalid) |
+| `dots version rollback` | Switch the runtime back to the previous release |
+| `dots dev link <checkout>` | Use an editable checkout as the active runtime |
+| `dots dev unlink` | Return to the current stable release |
 | `dots migrate [--pending\|--check]` | Run or list pending migrations |
 | `dots refresh config <path>` | Reset one live config from the repository, with backup and diff |
 | `dots reinstall configs` | Reset every live config to the shipped defaults |
-| `dots config import <path>` | Copy a live config back into the repository |
+| `dots config import <path>` | Copy a live config into the registered source checkout |
 | `dots theme list` | List available themes |
 | `dots theme current` | Print the active theme |
 | `dots theme set <name>` | Select and render a theme |
@@ -26,7 +33,7 @@ Run `dots` for the complete generated command listing or `dots help <group>` for
 `dots update available` uses distinct statuses for scripts and prompt integrations:
 
 - `0` — updates are available
-- `1` — the checkout is current
-- `2` — the state cannot be determined
+- `1` — the installed release or developer checkout is current
+- `2` — release metadata or developer upstream state cannot be determined
 
 See [`docs/update-process.md`](update-process.md) for the full update order and failure behavior.

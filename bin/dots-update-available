@@ -4,11 +4,10 @@
 # dots:examples=dots update available
 #
 # Exit codes, distinct so scripts can tell the states apart:
-#   0 — updates available (pending commits printed)
+#   0 — updates available (release version or pending commits printed)
 #   1 — up to date
-#   2 — cannot determine (not a checkout, no remote, or no upstream)
-# A failed fetch is quiet and falls back to the existing remote-tracking
-# state, so this works offline (omarchy-update-available semantics).
+#   2 — cannot determine (release metadata unavailable, or no Git upstream)
+# Stable mode compares published versions; developer mode compares Git.
 
 set -o pipefail
 
@@ -19,6 +18,7 @@ if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
   exec "$DOTS_PATH/bin/dots-update-available" "$@"
 fi
 source "$DOTS_PATH/install/helpers/files.sh"
+source "$DOTS_PATH/install/helpers/releases.sh"
 UPDATE_LOCK="${DOTS_UPDATE_LOCK:-$HOME/.local/state/dots/update.lock}"
 
 "$SELF_DIR/dots-ensure-flock" || exit 2
@@ -35,8 +35,8 @@ if [[ -L $UPDATE_LOCK || ! -f $UPDATE_LOCK ]]; then
   exit 2
 fi
 if [[ $(uname -s) == "Darwin" ]]; then
-  lock_id=$(stat -f '%i' "$UPDATE_LOCK")
-  fd_id=$(stat -f '%i' /dev/fd/8)
+  lock_id=$(stat -f '%d:%i' "$UPDATE_LOCK")
+  fd_id=$(perl -e 'open(my $fh, "<&=8") or exit 1; my @s = stat($fh); print "$s[0]:$s[1]"')
 else
   lock_id=$(stat -Lc '%d:%i' "$UPDATE_LOCK")
   fd_id=$(stat -Lc '%d:%i' /proc/self/fd/8)
@@ -48,6 +48,37 @@ fi
 if ! flock -n 8; then
   echo "Cannot check updates while dots update is running." >&2
   exit 2
+fi
+
+if dots_release_is_stable_mode; then
+  current=$(dots_release_pointer_version "$DOTS_RELEASE_CURRENT" 2>/dev/null) || {
+    echo "Cannot determine the active dots release." >&2
+    exit 2
+  }
+  if ! dots_release_fetch_latest_manifest; then
+    echo "Cannot check published dots releases." >&2
+    exit 2
+  fi
+  compare_rc=0
+  dots_release_compare_versions "$DOTS_LATEST_VERSION" "$current" || compare_rc=$?
+  case "$compare_rc" in
+    0)
+      echo "dots $current is up to date."
+      exit 1
+      ;;
+    1)
+      echo "dots $DOTS_LATEST_VERSION is available (installed: $current)."
+      exit 0
+      ;;
+    2)
+      echo "dots $current is newer than the latest published release $DOTS_LATEST_VERSION."
+      exit 1
+      ;;
+    *)
+      echo "Cannot compare dots release versions." >&2
+      exit 2
+      ;;
+  esac
 fi
 
 if ! git -C "$DOTS_PATH" rev-parse --git-dir >/dev/null 2>&1; then

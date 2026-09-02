@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 
-# dots:summary=Update dotfiles: pull the repo, sync packages, run migrations and hooks
+# dots:summary=Update dots, tools, migrations, and hooks
 #
-# The omarchy update pipeline, ported:
-#   lock -> transcript (script(1) pty) -> free-space check -> git pull
-#   -> mise sync -> migrations -> post-update hook -> log analysis
-#   -> restart checks
+# Stable installs activate a verified release bundle; developer installs
+# fast-forward their checkout. Both then run the shared convergence pipeline.
 #
 # Three exec stages: acquire the flock'd fd (dots-update-lock), re-exec
 # under script(1) so the run is recorded on a real pty, then run the
@@ -22,6 +20,7 @@ if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
   exec "$DOTS_PATH/bin/dots-update" "$@"
 fi
 source "$DOTS_PATH/install/helpers/files.sh"
+source "$DOTS_PATH/install/helpers/releases.sh"
 STATE_DIR="$HOME/.local/state/dots"
 dots_file_assert_safe_parents "$STATE_DIR/update.log" "$HOME"
 UPDATE_LOCK="${DOTS_UPDATE_LOCK:-$STATE_DIR/update.lock}"
@@ -32,8 +31,8 @@ update_lock_fd_valid() {
   { true >&9; } 2>/dev/null || return 1
   command -v flock >/dev/null 2>&1 || return 1
   if [[ $(uname -s) == "Darwin" ]]; then
-    lock_id=$(stat -f '%i' "$UPDATE_LOCK" 2>/dev/null) || return 1
-    fd_id=$(stat -f '%i' /dev/fd/9 2>/dev/null) || return 1
+    lock_id=$(stat -f '%d:%i' "$UPDATE_LOCK" 2>/dev/null) || return 1
+    fd_id=$(perl -e 'open(my $fh, "<&=9") or exit 1; my @s = stat($fh); print "$s[0]:$s[1]"' 2>/dev/null) || return 1
   else
     lock_id=$(stat -Lc '%d:%i' "$UPDATE_LOCK" 2>/dev/null) || return 1
     fd_id=$(stat -Lc '%d:%i' /proc/self/fd/9 2>/dev/null) || return 1
@@ -47,12 +46,17 @@ update_lock_fd_valid() {
 }
 
 # The transcribed stage must inherit both the lock sentinel and the verified
-# locked fd. The fd is closed immediately below, so exported state reaching
-# hooks or daemons cannot authorize another transcribed stage.
+# locked fd. Code convergence may re-exec once with that proof; the pipeline
+# closes it before hooks, migrations, or tools can inherit it.
 transcribed=""
+continuation=""
 if [[ ${1:-} == "--transcribed" && -n ${DOTS_UPDATE_LOCK_PID:-} ]] && update_lock_fd_valid; then
   transcribed=1
   shift
+  if [[ ${1:-} == "--continue" ]]; then
+    continuation=1
+    shift
+  fi
 fi
 
 # No public options exist; swallowing an unknown flag (say, --dry-run) and
@@ -176,10 +180,9 @@ if [[ -z $transcribed ]]; then
   exit "$script_rc"
 fi
 
-# Stage 3 (locked + transcribed): the pipeline. The lock lives on fd 9 in
-# the script(1) parent recording us; close our inherited copy so no child
-# (git, mise, migrations, hooks) can leave a daemon holding the lock.
-exec 9>&-
+# Stage 3 (locked + transcribed): the pipeline. Keep fd 9 only through code
+# convergence so a newly activated release can securely re-exec this stage.
+# It is closed before tools, migrations, and hooks can spawn descendants.
 
 # Signal deaths exit through the shell so both script(1) dialects report
 # the usual 128+n (BSD script would otherwise pass the raw signal number
@@ -193,21 +196,57 @@ abort_update() {
   finish_update "$1"
 }
 
-echo "=== dots update: $(date) ==="
-if [[ -f $PREV_NOTE_MARKER ]]; then
-  echo "Note: the previous update did not finish cleanly (transcript: $LOG_FILE.prev)."
-  dots_file_remove "$PREV_NOTE_MARKER" discard
-fi
+if [[ -z $continuation ]]; then
+  echo "=== dots update: $(date) ==="
+  if [[ -f $PREV_NOTE_MARKER ]]; then
+    echo "Note: the previous update did not finish cleanly (transcript: $LOG_FILE.prev)."
+    dots_file_remove "$PREV_NOTE_MARKER" discard
+  fi
 
-"$SELF_DIR/dots-update-requires-free-space" || abort_update "$?"
+  "$SELF_DIR/dots-update-requires-free-space" || abort_update "$?"
+fi
 
 degraded_steps=()
 
-# 1. Fast-forward the checkout, but never touch local work in progress.
-if git -C "$DOTS_PATH" rev-parse --git-dir >/dev/null 2>&1; then
+# 1. Converge dots itself. Stable mode never touches the editable checkout.
+# Re-exec after activation while the inherited lock proof is still available,
+# ensuring migrations and every later helper come from the new release.
+skip_release=""
+if dots_release_is_stable_mode; then
+  current_release=$(dots_release_pointer_version "$DOTS_RELEASE_CURRENT" 2>/dev/null) || current_release=""
+  if [[ -n ${DOTS_UPDATE_SKIP_RELEASE_ONCE:-} && $DOTS_UPDATE_SKIP_RELEASE_ONCE == "$current_release" ]]; then
+    skip_release=1
+  fi
+fi
+unset DOTS_UPDATE_SKIP_RELEASE_ONCE
+
+if dots_release_is_stable_mode; then
+  if [[ -z $continuation && -z $skip_release ]]; then
+    echo "Checking for dots releases..."
+    if ! dots_release_install_latest; then
+      echo "Could not install the latest dots release." >&2
+      echo "Update incomplete."
+      finish_update 2
+    fi
+    if [[ -n $DOTS_RELEASE_CHANGED ]]; then
+      echo "Activated dots $DOTS_DOWNLOADED_VERSION."
+      if [[ ${DOTS_UPDATE_TEST_FAIL_REEXEC:-} == "1" ]] ||
+        ! bash -n "$DOTS_RELEASE_CURRENT/bin/dots-update"; then
+        previous=$(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS" 2>/dev/null) || previous=""
+        if [[ -n $previous ]]; then
+          dots_release_activate "$previous" || true
+        fi
+        echo "Could not continue with the activated dots release." >&2
+        echo "Update incomplete."
+        finish_update 2
+      fi
+      exec "$DOTS_RELEASE_CURRENT/bin/dots-update" --transcribed --continue
+    fi
+  fi
+elif git -C "$DOTS_PATH" rev-parse --git-dir >/dev/null 2>&1; then
   if [[ -z $(git -C "$DOTS_PATH" status --porcelain --untracked-files=normal) ]]; then
     if git -C "$DOTS_PATH" remote get-url origin >/dev/null 2>&1; then
-      echo "Updating dotfiles checkout..."
+      echo "Updating dots developer checkout..."
       if ! git -C "$DOTS_PATH" pull --ff-only; then
         echo "Could not fast-forward; resolve manually." >&2
         degraded_steps+=("git pull")
@@ -217,13 +256,17 @@ if git -C "$DOTS_PATH" rev-parse --git-dir >/dev/null 2>&1; then
       degraded_steps+=("git remote")
     fi
   else
-    echo "Checkout has local changes; skipping pull." >&2
+    echo "Developer checkout has local changes; skipping pull." >&2
     degraded_steps+=("git pull (local changes)")
   fi
 else
-  echo "Dotfiles path is not a Git checkout; skipping pull." >&2
-  degraded_steps+=("git checkout")
+  echo "Dots runtime is neither a managed release nor a Git checkout." >&2
+  degraded_steps+=("dots runtime")
 fi
+
+# The script(1) parent still owns the update lock. Drop this process's copy so
+# mise, migrations, hooks, and any daemons they launch cannot retain it.
+exec 9>&-
 
 # 2. Packages: install anything newly pinned in the manifest, then upgrade.
 if command -v mise >/dev/null 2>&1; then

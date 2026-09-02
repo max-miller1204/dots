@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+
+# dots:summary=Install and activate a published dots release
+# dots:args=[version|latest]
+# dots:examples=dots version install;;dots version install 1.2.0
+
+set -eo pipefail
+
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-version-install" "$@"; fi
+source "$DOTS_PATH/install/helpers/files.sh"
+source "$DOTS_PATH/install/helpers/releases.sh"
+
+requested=${1:-latest}
+(($# <= 1)) || {
+  echo "Usage: dots version install [version|latest]" >&2
+  exit 1
+}
+if ! dots_release_lock_fd_valid; then
+  exec "$SELF_DIR/dots-update-lock" "$0" "$@"
+fi
+
+converge_active_release() {
+  local active
+  active=$(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") || return 1
+  echo "Converging tools and migrations for dots $active..."
+  DOTS_UPDATE_SKIP_RELEASE_ONCE=$active exec "$DOTS_RELEASE_CURRENT/bin/dots-update"
+}
+
+if [[ $requested == "latest" ]]; then
+  echo "Checking the latest dots release..."
+  dots_release_install_latest
+  if [[ -n $DOTS_RELEASE_CHANGED ]]; then
+    echo "Installed and activated dots $DOTS_DOWNLOADED_VERSION."
+  else
+    current=$(dots_release_pointer_version "$DOTS_RELEASE_CURRENT")
+    echo "dots $current is already installed."
+  fi
+  converge_active_release
+fi
+
+if ! dots_release_validate_version "$requested"; then
+  echo "Invalid dots version: $requested" >&2
+  exit 1
+fi
+
+checksum_file=$(mktemp "${TMPDIR:-/tmp}/dots-checksums.XXXXXX")
+trap 'rm -f "$checksum_file" "${DOTS_DOWNLOADED_ARCHIVE:-}"' EXIT
+checksum_url="$DOTS_RELEASE_BASE_URL/download/v$requested/SHA256SUMS"
+if ! curl -fsSL --connect-timeout 10 "$checksum_url" -o "$checksum_file"; then
+  echo "Could not download checksums for dots $requested." >&2
+  exit 1
+fi
+archive_name="dots-$requested.tar.gz"
+checksum=$(awk -v name="$archive_name" '$2 == name || $2 == "*" name { print $1; exit }' "$checksum_file")
+if [[ ! $checksum =~ ^[0-9a-fA-F]{64}$ ]]; then
+  echo "No valid checksum found for $archive_name." >&2
+  exit 1
+fi
+
+dots_release_download "$requested" "$archive_name" "$checksum"
+dots_release_install_downloaded
+DOTS_DOWNLOADED_ARCHIVE=""
+rm -f "$checksum_file"
+trap - EXIT
+echo "Installed and activated dots $requested."
+converge_active_release

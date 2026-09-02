@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+# dots:summary=Switch back to the previous dots runtime release
+
+set -eo pipefail
+
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-version-rollback" "$@"; fi
+source "$DOTS_PATH/install/helpers/files.sh"
+source "$DOTS_PATH/install/helpers/releases.sh"
+
+(($# == 0)) || {
+  echo "Usage: dots version rollback" >&2
+  exit 1
+}
+if ! dots_release_lock_fd_valid; then
+  exec "$SELF_DIR/dots-update-lock" "$0" "$@"
+fi
+previous=$(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS" 2>/dev/null) || {
+  echo "No previous dots release is available." >&2
+  exit 1
+}
+current=$(dots_release_pointer_version "$DOTS_RELEASE_CURRENT" 2>/dev/null) || current="unknown"
+dots_release_activate "$previous"
+echo "Rolled dots back from $current to $previous."
+echo "Note: this does not undo migrations, config changes, or mise upgrades."
