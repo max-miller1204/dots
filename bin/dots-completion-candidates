@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+# dots:hidden=true
+
+# Print context-aware completion candidates for the dots Bash and Zsh
+# adapters. Arguments are the fully entered words after `dots`; the shell
+# adapters filter the output against the word currently being typed.
+
+if ((BASH_VERSINFO[0] < 4)); then
+  exit 0
+fi
+
+DOTS_BIN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd) || exit 0
+DOTS_PATH=${DOTS_PATH:-${DOTS_BIN_DIR%/bin}}
+METADATA_SCAN_LIMIT=20
+
+declare -A emitted=()
+
+metadata() { # metadata <file> <key>
+  local file=$1 key=$2 line count=0 prefix
+  prefix="# dots:$key="
+  while ((count < METADATA_SCAN_LIMIT)) && IFS= read -r line; do
+    count=$((count + 1))
+    if [[ $line == "$prefix"* ]]; then
+      printf '%s\n' "${line#"$prefix"}"
+      return 0
+    fi
+  done <"$file"
+}
+
+visible_command() { # visible_command <file>
+  [[ -f $1 && -x $1 && $(metadata "$1" hidden) != "true" ]]
+}
+
+emit() { # emit <candidate>
+  [[ -n $1 && -z ${emitted[$1]:-} ]] || return 0
+  emitted[$1]=1
+  printf '%s\n' "$1"
+}
+
+has_visible_prefix() { # has_visible_prefix <dots-command-prefix>
+  local prefix=$1 file
+  for file in "$DOTS_BIN_DIR/$prefix" "$DOTS_BIN_DIR/$prefix"-*; do
+    visible_command "$file" && return 0
+  done
+  return 1
+}
+
+emit_subcommands() { # emit_subcommands <dots-command-prefix>
+  local prefix=$1 file base rest next
+  for file in "$DOTS_BIN_DIR/$prefix"-*; do
+    visible_command "$file" || continue
+    base=${file##*/}
+    rest=${base#"$prefix"-}
+    next=${rest%%-*}
+    emit "$next"
+  done
+}
+
+emit_argument_candidates() { # emit_argument_candidates <file> <argument-count>
+  local file=$1 argument_count=$2 args_spec remaining option token value item name
+
+  args_spec=$(metadata "$file" args)
+  remaining=$args_spec
+  while [[ $remaining =~ (--[[:alnum:]][[:alnum:]-]*) ]]; do
+    option=${BASH_REMATCH[1]}
+    emit "$option"
+    remaining=${remaining#*"$option"}
+  done
+
+  if ((argument_count == 0)); then
+    for token in $args_spec; do
+      token=${token#[}
+      token=${token%]}
+      token=${token#<}
+      token=${token%>}
+      if [[ $token == *"|"* && $token != -* ]]; then
+        while IFS= read -r value; do
+          emit "$value"
+        done <<<"${token//|/$'\n'}"
+      fi
+    done
+  fi
+
+  ((argument_count == 0)) || return 0
+
+  case ${file##*/} in
+    dots-theme-set)
+      for item in "$DOTS_PATH"/themes/* "$HOME"/.config/dots/themes/*; do
+        name=${item##*/}
+        if [[ -d $item && ! -L $item && $name =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+          emit "$name"
+        fi
+      done
+      ;;
+    dots-hook | dots-hook-install)
+      emit post-update
+      emit theme-set
+      for item in "$DOTS_PATH"/config/dots/hooks/* "$HOME"/.config/dots/hooks/*; do
+        [[ -e $item || -L $item ]] || continue
+        name=${item##*/}
+        name=${name%.d}
+        [[ $name == *.sample ]] || emit "$name"
+      done
+      ;;
+    dots-refresh-config)
+      while IFS= read -r item; do
+        value=${item#"$DOTS_PATH/config/"}
+        if [[ $value != *..* ]]; then
+          emit "$value"
+        fi
+      done < <(find "$DOTS_PATH/config" -type f 2>/dev/null)
+      ;;
+    dots-config-import)
+      while IFS= read -r item; do
+        value=${item#"$HOME/.config/"}
+        if [[ $value != *..* ]]; then
+          emit "$value"
+        fi
+      done < <(find "$HOME/.config" -type f 2>/dev/null)
+      ;;
+  esac
+}
+
+# `dots help <group>` accepts the same visible first-level groups as `dots`.
+if [[ ${1:-} == "help" || ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  (($# == 1)) && emit_subcommands dots
+  exit 0
+fi
+
+prefix=dots
+command_argc=0
+for word in "$@"; do
+  [[ $word == -* ]] && break
+  candidate="$prefix-$word"
+  has_visible_prefix "$candidate" || break
+  prefix=$candidate
+  command_argc=$((command_argc + 1))
+done
+
+# Offer deeper commands only while every completed positional word still
+# belongs to the command path. Once arguments begin, only argument candidates
+# are relevant.
+if (($# == command_argc)); then
+  emit_subcommands "$prefix"
+fi
+
+command_file="$DOTS_BIN_DIR/$prefix"
+argument_count=$(( $# - command_argc ))
+if [[ $prefix == "dots" || -f $command_file && -x $command_file ]] &&
+  [[ $prefix == "dots" || $(metadata "$command_file" hidden) != "true" ]]; then
+  if ((argument_count == 0)); then
+    emit -h
+    emit --help
+  fi
+  [[ $prefix == "dots" ]] || emit_argument_candidates "$command_file" "$argument_count"
+fi

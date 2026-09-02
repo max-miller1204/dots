@@ -1,13 +1,13 @@
 # Commands
 
-Run `dots` for the complete generated command listing or `dots help <group>` for one group. Every command also supports `--help` or `-h`.
+Run `dots` for the complete generated command listing or `dots help <group>` for one group. Every command also supports `--help` or `-h`. Interactive Bash and Zsh complete visible groups, nested commands, options, themes, hook events, and config paths.
 
 | Command | Purpose |
 | --- | --- |
 | `dots install` | Run first-time package, config, shell, and theme setup |
 | `dots update` | Update the checkout, tools, migrations, and hooks |
 | `dots update available` | Report pending commits |
-| `dots migrate [--pending]` | Run or list pending migrations |
+| `dots migrate [--pending\|--check]` | Run or list pending migrations |
 | `dots refresh config <path>` | Reset one live config from the repository, with backup and diff |
 | `dots reinstall configs` | Reset every live config to the shipped defaults |
 | `dots config import <path>` | Copy a live config back into the repository |

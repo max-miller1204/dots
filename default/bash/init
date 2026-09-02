@@ -1,3 +1,9 @@
+# Zsh completion must be initialized before integrations such as zoxide use
+# compdef to register their own command-specific completions.
+if [[ -n ${ZSH_VERSION:-} ]]; then
+  . "$DOTS_PATH/default/zsh/completions"
+fi
+
 # Shell integrations are optional: a missing tool leaves the stock shell intact.
 if command -v fzf >/dev/null 2>&1; then
   if [[ -n ${BASH_VERSION:-} ]]; then
@@ -38,4 +44,10 @@ if command -v mise >/dev/null 2>&1; then
   elif [[ -n ${ZSH_VERSION:-} ]]; then
     eval "$(mise activate zsh)"
   fi
+fi
+
+# Load this after third-party integrations so the dots-specific definition
+# wins over any generic path completion registered earlier (for example fzf).
+if [[ -n ${BASH_VERSION:-} ]]; then
+  . "$DOTS_PATH/default/bash/completions"
 fi

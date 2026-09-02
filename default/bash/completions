@@ -1,0 +1,30 @@
+# Context-aware completion for the unified `dots` dispatcher.
+
+_dots_complete() {
+  local helper cur candidate
+  local -a consumed
+
+  COMPREPLY=()
+  cur=${COMP_WORDS[COMP_CWORD]}
+  helper="$DOTS_PATH/bin/dots-completion-candidates"
+  [[ -x $helper ]] || return 0
+
+  if ((COMP_CWORD > 1)); then
+    consumed=("${COMP_WORDS[@]:1:$((COMP_CWORD - 1))}")
+  else
+    consumed=()
+  fi
+
+  while IFS= read -r candidate; do
+    [[ $candidate == "$cur"* ]] && COMPREPLY+=("$candidate")
+  done < <("$helper" "${consumed[@]}")
+}
+
+complete -o bashdefault -o default -F _dots_complete dots
+
+# The dispatcher is the public interface; keep its implementation binaries
+# out of initial command-name completion, as Omarchy does for omarchy-*.
+# Initial-word filters were added in Bash 5; completion itself still works on 4.
+if ((BASH_VERSINFO[0] >= 5)); then
+  complete -I -A command -X 'dots-*'
+fi

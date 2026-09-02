@@ -171,6 +171,32 @@ cmp -s "$link_targets/zshrc" "$final_fixtures/zshrc.41d3229" || fail "final migr
 cmp -s "$link_targets/starship.toml" "$final_fixtures/starship.old" || fail "final migration altered a Starship symlink target"
 assertions=$((assertions + 12))
 
+# --- virtualenv prompt migration updates only the exact stock Starship config.
+venv_fixture="$ROOT/test/fixtures/1788300252/starship.old"
+venv_home="$SANDBOX/venv-migration-home"
+mkdir -p "$venv_home/.config"
+cp "$venv_fixture" "$venv_home/.config/starship.toml"
+HOME="$venv_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788300252.sh" >/dev/null
+cmp -s "$venv_home/.config/starship.toml" "$ROOT/config/starship.toml" ||
+  fail "virtualenv migration did not update stock Starship config"
+custom_venv_home="$SANDBOX/custom-venv-migration-home"
+mkdir -p "$custom_venv_home/.config"
+cp "$venv_fixture" "$custom_venv_home/.config/starship.toml"
+printf '# custom prompt\n' >>"$custom_venv_home/.config/starship.toml"
+HOME="$custom_venv_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788300252.sh" >/dev/null
+[[ $(tail -1 "$custom_venv_home/.config/starship.toml") == "# custom prompt" ]] ||
+  fail "virtualenv migration replaced customized Starship config"
+linked_venv_home="$SANDBOX/linked-venv-migration-home"
+mkdir -p "$linked_venv_home/.config"
+cp "$venv_fixture" "$linked_venv_home/starship-target"
+ln -s "$linked_venv_home/starship-target" "$linked_venv_home/.config/starship.toml"
+HOME="$linked_venv_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788300252.sh" >/dev/null
+[[ -L $linked_venv_home/.config/starship.toml ]] ||
+  fail "virtualenv migration replaced a Starship symlink"
+cmp -s "$linked_venv_home/starship-target" "$venv_fixture" ||
+  fail "virtualenv migration altered a Starship symlink target"
+assertions=$((assertions + 4))
+
 # --- free-space guard
 DOTS_UPDATE_MIN_FREE_KB=1 "$ROOT/bin/dots-update-requires-free-space" ||
   fail "free-space check failed with tiny threshold"

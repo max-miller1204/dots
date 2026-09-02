@@ -4,7 +4,7 @@ Personal dotfiles for macOS, Ubuntu, and WSL. Configs are copied—not symlinked
 
 ## Setup
 
-Install `git` and `curl` first. macOS also requires [Homebrew](https://brew.sh).
+Install `git` and `curl` first. macOS also requires [Homebrew](https://brew.sh). For broader Bash completion beyond the built-in `dots` commands, install the optional platform framework using the commands in [Shell completion setup](docs/setup.md#optional-bash-completion-framework).
 
 1. Install the official standalone mise release:
 

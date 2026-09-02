@@ -50,6 +50,9 @@ default/bash/env-bootstrap →  sourced by both rc files      (DOTS_PATH + PATH)
 default/bash/{shell,aliases,functions,init}
                            →  sourced by both rc files      (portable shell UX)
 default/bash/inputrc       →  loaded by interactive Bash   (Readline settings)
+default/bash/completions   →  loaded by interactive Bash   (dots command completion)
+default/zsh/completions    →  sourced before Zsh tool integrations (completion setup)
+default/zsh/site-functions →  added to interactive Zsh fpath (native completions)
 default/themed/*.tpl       →  rendered into the active theme
 install/**                 →  run by dots-install
 migrations/*.sh            →  run by dots-migrate            (markers in state dir)
@@ -104,6 +107,7 @@ published.
 | Adopt a live config into the repo | `dots config import foo/...` |
 | Portable shell alias/function/default | shared file under `default/bash/`, sourced by both rc files |
 | Shell-specific startup behavior | `default/bashrc` or `default/zshrc` |
+| `dots` shell completion | `default/bash/completions`, `default/zsh/completions`, `default/zsh/site-functions/_dots`, and `bin/dots-completion-candidates` |
 | One-time setup step at install | leaf under `install/config/` or `install/user/`, wired into its `all.sh` |
 | One-time fix for existing installs | `migrations/$(date +%s).sh` |
 | New theme | `themes/<name>/colors.toml` |

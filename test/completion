@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+
+# Cross-platform shell completion loading plus dots dispatcher candidates.
+
+set -eo pipefail
+
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+source "$ROOT/test/helpers.sh"
+setup_sandbox
+
+contains_line() { # contains_line <lines> <expected> <label>
+  if grep -Fxq -- "$2" <<<"$1"; then
+    assertions=$((assertions + 1))
+  else
+    fail "$3: expected line '$2' in:
+$1"
+  fi
+}
+
+excludes_line() { # excludes_line <lines> <unexpected> <label>
+  if grep -Fxq -- "$2" <<<"$1"; then
+    fail "$3: unexpected line '$2' in:
+$1"
+  fi
+  assertions=$((assertions + 1))
+}
+
+helper="$ROOT/bin/dots-completion-candidates"
+
+# Root and nested candidates mirror router visibility without exposing helper
+# binaries or hidden implementation commands.
+out=$("$helper")
+contains_line "$out" theme "root completion includes visible group"
+contains_line "$out" update "root completion includes executable group"
+excludes_line "$out" cmd "root completion hides internal command"
+
+theme_out=$("$helper" theme)
+contains_line "$theme_out" set "nested completion includes immediate command"
+contains_line "$theme_out" list "nested completion includes sibling command"
+contains_line "$theme_out" sync "nested completion includes documented sync commands"
+sync_out=$("$helper" theme sync)
+contains_line "$sync_out" pi "sync completion includes public Pi integration"
+contains_line "$sync_out" claude "sync completion includes public Claude integration"
+excludes_line "$sync_out" btop "sync completion hides internal integrations"
+
+migrate_out=$("$helper" migrate)
+contains_line "$migrate_out" --pending "metadata option is completed"
+contains_line "$migrate_out" --check "documented option alias is completed"
+
+mkdir -p "$HOME/.config/dots/themes/user-theme" "$HOME/.config/dots/themes/Invalid_Theme"
+theme_values=$("$helper" theme set)
+contains_line "$theme_values" tokyo-night "repository theme is completed"
+contains_line "$theme_values" user-theme "user theme is completed"
+excludes_line "$theme_values" Invalid_Theme "invalid theme identifiers are not completed"
+
+hook_values=$("$helper" hook)
+contains_line "$hook_values" install "hook subcommand is completed"
+contains_line "$hook_values" post-install "supported hook event is completed"
+contains_line "$hook_values" post-update "supported hook event is completed"
+contains_line "$hook_values" theme-set "supported hook event is completed"
+
+refresh_values=$("$helper" refresh config)
+contains_line "$refresh_values" git/config "shipped config path is completed"
+mkdir -p "$HOME/.config/completion-test"
+printf 'valid\n' >"$HOME/.config/completion-test/valid"
+printf 'invalid\n' >"$HOME/.config/completion-test/invalid..name"
+import_values=$("$helper" config import)
+contains_line "$import_values" completion-test/valid "live config path is completed"
+excludes_line "$import_values" completion-test/invalid..name "rejected config path is not completed"
+
+# A checkout path containing spaces exercises arbitrary nested commands, enum
+# metadata, options, and hidden filtering without changing the real bin tree.
+fixture_repo="$SANDBOX/completion repo"
+mkdir -p "$fixture_repo/bin" "$fixture_repo/themes/repo-theme"
+cp "$helper" "$fixture_repo/bin/dots-completion-candidates"
+cat >"$fixture_repo/bin/dots-alpha" <<'EOF'
+#!/usr/bin/env bash
+# dots:args=<one|two> [--force]
+EOF
+cat >"$fixture_repo/bin/dots-alpha-beta-gamma" <<'EOF'
+#!/usr/bin/env bash
+EOF
+cat >"$fixture_repo/bin/dots-alpha-hidden" <<'EOF'
+#!/usr/bin/env bash
+# dots:hidden=true
+EOF
+chmod +x "$fixture_repo/bin"/*
+fixture_out=$(DOTS_PATH="$fixture_repo" "$fixture_repo/bin/dots-completion-candidates" alpha)
+contains_line "$fixture_out" beta "deep command exposes only its next segment"
+contains_line "$fixture_out" one "enum metadata first value is completed"
+contains_line "$fixture_out" two "enum metadata second value is completed"
+contains_line "$fixture_out" --force "fixture metadata option is completed"
+excludes_line "$fixture_out" hidden "hidden fixture command is excluded"
+deep_out=$(DOTS_PATH="$fixture_repo" "$fixture_repo/bin/dots-completion-candidates" alpha beta)
+contains_line "$deep_out" gamma "third-level command is completed"
+
+# Bash discovers the framework loader under a PATH prefix and then loads the
+# dots adapter after third-party shell integrations.
+completion_prefix="$SANDBOX/completion-prefix"
+mkdir -p "$completion_prefix/bin" "$completion_prefix/share/bash-completion"
+cat >"$completion_prefix/share/bash-completion/bash_completion" <<'EOF'
+BASH_COMPLETION_VERSINFO=(2 99)
+_completion_loader() { :; }
+EOF
+bash_bin=$(command -v bash)
+PATH="$completion_prefix/bin:/usr/bin:/bin" DOTS_PATH="$ROOT" TERM=dumb \
+  "$bash_bin" --noprofile --norc -ic \
+  'source "$1"; declare -F _completion_loader >/dev/null;
+    declare -F _dots_complete >/dev/null; complete -p dots >/dev/null;
+    ((BASH_VERSINFO[0] < 5)) || [[ $(complete -p -I) == *"dots-*"* ]]' \
+  bash "$ROOT/default/bashrc" || fail "interactive Bash did not load completion framework and dots adapter"
+assertions=$((assertions + 1))
+
+# Exercise Bash's current-word filtering through the registered adapter.
+DOTS_PATH="$ROOT" bash --noprofile --norc -c \
+  'source "$1"; COMP_WORDS=(dots theme se); COMP_CWORD=2; _dots_complete;
+    [[ ${COMPREPLY[*]} == "set" ]]' \
+  bash "$ROOT/default/bash/completions" || fail "Bash dots adapter returned wrong nested candidate"
+assertions=$((assertions + 1))
+
+# Zsh finds the native _dots definition through fpath before compinit scans it.
+if command -v zsh >/dev/null 2>&1; then
+  PATH="/usr/bin:/bin" DOTS_PATH="$ROOT" TERM=dumb zsh -fic \
+    'source "$1"; (( $+functions[_dots] && ${fpath[(Ie)$2/default/zsh/site-functions]} &&
+      ${+_comps[dots]} ))' \
+    zsh "$ROOT/default/zshrc" "$ROOT" || fail "interactive Zsh did not register native dots completion"
+
+  zsh_out=$(DOTS_PATH="$ROOT" zsh -fc '
+    compadd() {
+      local candidate current=${words[CURRENT]} matched=1
+      shift
+      for candidate in "$@"; do
+        if [[ $candidate == "$current"* ]]; then
+          print -r -- "$candidate"
+          matched=0
+        fi
+      done
+      return $matched
+    }
+    _default() { return 1; }
+    words=(dots theme se)
+    CURRENT=3
+    source "$1"
+  ' zsh "$ROOT/default/zsh/site-functions/_dots")
+  [[ $zsh_out == "set" ]] || fail "Zsh dots adapter returned wrong nested candidate: $zsh_out"
+  assertions=$((assertions + 2))
+fi
+
+printf 'ok: %d assertions passed (completion)\n' "$assertions"
