@@ -14,7 +14,7 @@ for f in "$ROOT"/bin/*; do
 done
 while IFS= read -r f; do
   bash -n "$f" || fail "syntax error in $f"
-done < <(find "$ROOT/install" "$ROOT/test" -type f \( -name '*.sh' -o -name 'cli' -o -name 'update' -o -name 'all' \))
+done < <(find "$ROOT/install" "$ROOT/scripts" "$ROOT/test" -type f \( -name '*.sh' -o -name 'cli' -o -name 'release' -o -name 'update' -o -name 'all' \))
 assertions=$((assertions + 1))
 
 setup_sandbox
@@ -23,6 +23,7 @@ setup_sandbox
 out=$("$ROOT/bin/dots")
 assert_contains "$out" "theme" "root listing shows theme group"
 assert_contains "$out" "update" "root listing shows update group"
+assert_contains "$out" "dev" "root listing shows dev group"
 
 # Router: group command listing
 out=$("$ROOT/bin/dots" theme)
@@ -32,6 +33,10 @@ assert_contains "$out" "theme-set" "group listing shows theme-set"
 # without running it
 out=$("$ROOT/bin/dots" help update)
 assert_contains "$out" "update-available" "help <group> lists subcommands"
+out=$("$ROOT/bin/dots" help version)
+assert_contains "$out" "version-install" "version help lists release commands"
+out=$("$ROOT/bin/dots" help dev)
+assert_contains "$out" "dev-link" "dev help lists checkout commands"
 
 # Router: hidden commands stay hidden
 out=$("$ROOT/bin/dots")

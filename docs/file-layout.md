@@ -7,22 +7,24 @@ units, the Quickshell desktop).
 
 ## Mental model
 
-The checkout at `~/dotfiles` *is* the install — there is no distro package
-layer. The same checkout runs on macOS, Ubuntu, and WSL; tools come from mise
-(manifest: `config/mise/config.toml`), never brew or apt. The one exception:
-on macOS, `install/config/macos.sh` uses Homebrew to install modern bash
-(system `/bin/bash` is 3.2) and set it as the login shell — all scripts use
-`#!/usr/bin/env bash` and assume bash >= 4.
-`$DOTS_PATH` points at it (set by `default/bash/env-bootstrap`, sourced from
-`~/.bashrc` and `~/.zshrc`). The canonical checkout path is stored as plain,
-non-executable data in `~/.config/dots/path`; the file must be a regular,
+Stable dots runs from immutable GitHub release bundles, not from the editable
+checkout. Releases live under `~/.local/share/dots/releases/<version>/`, with
+atomic `current` and `previous` symlinks. The checkout at `~/dotfiles` remains
+an optional authoring tree, recorded separately in `~/.config/dots/source-path`.
+`dots dev link` explicitly makes that checkout the runtime; `dots dev unlink`
+returns to the stable `current` release.
+
+The same runtime runs on macOS, Ubuntu, and WSL; tools come from mise (manifest:
+`config/mise/config.toml`), never brew or apt. The one exception: on macOS,
+`install/config/macos.sh` uses Homebrew to install modern bash and flock.
+
+`$DOTS_PATH` identifies the active runtime. Its canonical path is stored as
+plain, non-executable data in `~/.config/dots/path`; the file must be a regular,
 non-symlink file containing exactly one non-empty line, and paths containing a
-newline or colon are rejected because
-they cannot be represented safely as one PATH entry.
-Shell startup and direct `dots-*` commands both resolve this same file, so cron,
-SSH, and absolute command invocations use the canonical checkout. A command
-reached through another checkout delegates to the canonical checkout's binary
-before parsing or mutating state, preventing stale-code/current-data mixtures.
+newline or colon are rejected. Stable mode stores
+`~/.local/share/dots/current`; developer mode stores the checkout path. Shell
+startup and direct commands resolve the same authority, and commands reached
+through an inactive release or checkout delegate before mutating state.
 
 Three layers populate `$HOME` (omarchy's seed / finalize / resync):
 
@@ -41,7 +43,7 @@ Your live files in `~/.config` are yours; the repo holds the defaults.
 ## Map (repo → live paths)
 
 ```
-bin/dots-*                 →  on PATH via env-bootstrap (checkout, not /usr/bin)
+bin/dots-*                 →  on PATH via env-bootstrap (active release or dev checkout)
 config/**                  →  ~/.config/**                  (seed + resync source)
 default/bashrc, bash_profile, zshrc
                            →  ~/.bashrc, ~/.bash_profile, ~/.zshrc  (seeded, then yours;
@@ -61,13 +63,13 @@ themes/<name>/colors.toml  →  staged + rendered by dots-theme-set
 
 ## State vs config
 
+- `~/.local/share/dots/` — owned release store: immutable `releases/<version>/` trees and atomic `current`/`previous` pointers.
 - `~/.local/state/dots/` — machine state, never versioned: migration markers
   (`migrations/`), done markers (`done/`), immutable theme generations
   (`theme-generations/`), atomic active/previous pointers (`current`,
   `theme-previous`), install/update transcripts (`install.log`, `update.log`),
   and `restart-*-required` markers.
-- `~/.config/dots/` — user configuration: the plain checkout `path`, user-only
-  hooks (`hooks/<event>.d/`), user themes (`themes/<name>/`), and user templates
+- `~/.config/dots/` — user configuration: the active runtime `path`, optional editable `source-path`, user-only hooks (`hooks/<event>.d/`), user themes (`themes/<name>/`), and user templates
   (`themed/*.tpl`). First-party theme integrations remain versioned in `bin/`.
 
 ## Theme activation flow

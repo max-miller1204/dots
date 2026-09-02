@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+
+# dots:summary=Move a checkout-backed installation onto stable releases
+# dots:examples=dots version adopt
+
+set -eo pipefail
+
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd -P)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-version-adopt" "$@"; fi
+source "$DOTS_PATH/install/helpers/files.sh"
+source "$DOTS_PATH/install/helpers/releases.sh"
+
+(($# == 0)) || {
+  echo "Usage: dots version adopt" >&2
+  exit 1
+}
+if ! dots_release_lock_fd_valid; then
+  exec "$SELF_DIR/dots-update-lock" "$0" "$@"
+fi
+if dots_release_is_stable_mode; then
+  current=$(dots_release_pointer_version "$DOTS_RELEASE_CURRENT")
+  echo "Already using stable dots $current."
+  exit 0
+fi
+if ! git -C "$DOTS_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "The active dots runtime is not an adoptable Git checkout: $DOTS_PATH" >&2
+  exit 1
+fi
+
+echo "Recording editable checkout at $DOTS_PATH..."
+dots_release_write_source_path "$DOTS_PATH"
+echo "Installing the latest stable dots release..."
+dots_release_install_latest
+current=$(dots_release_pointer_version "$DOTS_RELEASE_CURRENT")
+echo "Adopted stable dots $current. Your checkout was not modified."
+echo "Converging tools and migrations..."
+exec 9>&-
+unset DOTS_UPDATE_LOCK_PID
+DOTS_UPDATE_SKIP_RELEASE_ONCE=$current exec "$DOTS_RELEASE_CURRENT/bin/dots-update"

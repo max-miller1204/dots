@@ -46,7 +46,7 @@ curl https://mise.run | sh
 
 The installer places mise at `~/.local/bin/mise`. Dots can find that path even before the current shell reloads.
 
-Then install dots:
+Then clone the editable source and install the latest stable release:
 
 ```bash
 git clone https://github.com/max-miller1204/dots.git ~/dotfiles
@@ -54,7 +54,16 @@ git clone https://github.com/max-miller1204/dots.git ~/dotfiles
 exec "$SHELL" -l
 ```
 
-`dots install` is safe to rerun. It copies the shipped defaults, installs the mise tool manifest, configures the shell, and selects the default theme.
+The source checkout is recorded separately, while the active runtime is installed under `~/.local/share/dots/releases/`. `dots install` is safe to rerun. It copies the released defaults, installs the mise tool manifest, configures the shell, and selects the default theme.
+
+Develop directly against the checkout only when needed:
+
+```bash
+dots dev link ~/dotfiles
+dots dev unlink
+```
+
+For a deliberately checkout-backed installation from the start, run `~/dotfiles/bin/dots-install --developer`.
 
 Verify the installation:
 
@@ -132,12 +141,11 @@ mise install
 
 Mise's npm backend uses the embedded Aube package manager. Aube refuses low-download packages unless the manifest explicitly approves them. Stepstone is a reviewed first-party tool for this setup, so its manifest entry has the narrow `allow_low_downloads = true` exception. The setting does not disable Aube's checks globally or approve transitive packages.
 
-Pull the corrected manifest and rerun the installer:
+Update to the corrected release and rerun the installer:
 
 ```bash
-cd ~/dotfiles
-git pull
-~/dotfiles/bin/dots-install
+dots update
+dots install
 ```
 
 ### `mise self-update` fails under apt

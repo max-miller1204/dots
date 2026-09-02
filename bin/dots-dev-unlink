@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+# dots:summary=Return from a developer checkout to the stable release
+
+set -eo pipefail
+
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-dev-unlink" "$@"; fi
+source "$DOTS_PATH/install/helpers/files.sh"
+source "$DOTS_PATH/install/helpers/releases.sh"
+
+(($# == 0)) || {
+  echo "Usage: dots dev unlink" >&2
+  exit 1
+}
+if ! dots_release_lock_fd_valid; then
+  exec "$SELF_DIR/dots-update-lock" "$0" "$@"
+fi
+current=$(dots_release_pointer_version "$DOTS_RELEASE_CURRENT" 2>/dev/null) || {
+  echo "No stable dots release is installed." >&2
+  echo "Install one with: dots version install" >&2
+  exit 1
+}
+dots_release_verify_installed "$DOTS_RELEASES_DIR/$current" "$current" || exit 1
+dots_release_write_path "$DOTS_RELEASE_CURRENT"
+echo "Using stable dots $current."

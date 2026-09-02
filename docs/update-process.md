@@ -17,7 +17,9 @@ dots-update
   │    (DOTS_UPDATE_FORCE=1 bypasses; unknown free space is skipped;
   │     a deliberate abort writes "Update aborted." so the next run
   │     doesn't misreport it as a crash)
-  ├─ git pull --ff-only                only with no tracked, staged, or untracked work
+  ├─ converge dots runtime
+  │    ├─ stable: verify, stage, and atomically activate latest release
+  │    └─ developer: git pull --ff-only only with a clean checkout
   ├─ mise install / upgrade            sync tools to the manifest
   ├─ mise self-update                  update the standalone mise binary
   ├─ dots-migrate                      run pending migrations
@@ -26,11 +28,12 @@ dots-update
   └─ dots-update-restart               report restart-*-required markers
 ```
 
-The command exits `0` only after every convergence stage succeeds. Git, mise,
-or post-update hook failures are collected and reported as `Update incomplete.`
-with exit status `2`; migration failures retain their own nonzero status. An
-offline or locally modified checkout may still complete safe local stages, but
-is reported as incomplete rather than indistinguishable from full success.
+The command exits `0` only after every convergence stage succeeds. A stable release download or verification failure stops before tools and
+migrations run. Git, mise, or post-update hook failures are reported as
+`Update incomplete.` with exit status `2`; migration failures retain their own
+nonzero status. A locally modified developer checkout remains untouched and is
+reported as incomplete. Stable updates never inspect or mutate the editable
+source checkout.
 
 ## State and coordination files
 
@@ -60,13 +63,25 @@ finish.
 
 ## Update indicator
 
-`dots update available` is the omarchy `omarchy-update-available` port.
-Exit codes are distinct so scripts can tell the states apart:
+`dots update available` checks the published release manifest in stable mode
+and the configured Git upstream in developer mode. Exit codes are distinct so
+scripts can tell the states apart:
 
-- `0` — updates available (pending commits printed)
+- `0` — updates available (published version or pending commits printed)
 - `1` — up to date
-- `2` — cannot determine (not a checkout, no remote/upstream, or an update currently owns the Git lock)
+- `2` — cannot determine (release metadata unavailable, no developer upstream, or an update owns the lock)
 
-The availability check shares the update lock so its fetch cannot race a full update. A failed fetch is quiet and falls back to the existing remote-tracking
-state, so it works offline. Wire it into a prompt segment, a login check,
-or a scheduled job as you like.
+The availability check shares the update lock so its release check or Git fetch
+cannot race a full update. Developer mode falls back to existing
+remote-tracking state after a failed fetch. Wire it into a prompt segment, a
+login check, or a scheduled job as you like.
+
+## Activation and rollback
+
+Release archives are verified before their immutable directory is published.
+The updater records the old release as `previous`, atomically switches
+`current`, then securely re-execs the new updater while retaining the update
+lock. Failures before activation leave the current release unchanged.
+
+`dots version rollback` swaps the runtime pointers, but deliberately does not
+undo migrations, copied configuration, or mise upgrades.

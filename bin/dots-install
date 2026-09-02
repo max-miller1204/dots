@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-# dots:summary=First-time install: packages, configs, shell integration, theme
+# dots:summary=Install stable dots releases, packages, configs, and shell integration
+# dots:args=[--developer]
 #
-# Safe to re-run: config seeding backs up files it replaces, and one-time
-# steps are guarded by done markers.
+# Stable is the default. --developer installs directly from this checkout.
 
 set -eo pipefail
 
@@ -12,6 +12,47 @@ export DOTS_PATH
 export PATH="$DOTS_PATH/bin:$PATH"
 
 source "$DOTS_PATH/install/helpers/files.sh"
+source "$DOTS_PATH/install/helpers/releases.sh"
+source "$DOTS_PATH/install/config/flock.sh"
+
+original_args=("$@")
+install_mode=stable
+if [[ ${1:-} == "--developer" ]]; then
+  install_mode=developer
+  shift
+elif [[ ${1:-} == "--release-runtime" ]]; then
+  install_mode=release-runtime
+  shift
+fi
+if (($#)); then
+  echo "Usage: dots install [--developer]" >&2
+  exit 1
+fi
+if ! dots_release_lock_fd_valid; then
+  exec "$DOTS_PATH/bin/dots-update-lock" "$0" "${original_args[@]}"
+fi
+
+if [[ $install_mode == "stable" ]]; then
+  if git -C "$DOTS_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    dots_release_write_source_path "$DOTS_PATH"
+  fi
+  echo "Installing the latest stable dots release..."
+  dots_release_install_latest
+  exec "$DOTS_RELEASE_CURRENT/bin/dots-install" --release-runtime
+elif [[ $install_mode == "developer" ]]; then
+  if git -C "$DOTS_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    dots_release_write_source_path "$DOTS_PATH"
+  fi
+else
+  current_version=$(dots_release_pointer_version "$DOTS_RELEASE_CURRENT" 2>/dev/null) || current_version=""
+  current_runtime=$(cd -- "$DOTS_RELEASE_CURRENT" 2>/dev/null && pwd -P) || current_runtime=""
+  invoked_runtime=$(cd -- "$DOTS_PATH" && pwd -P)
+  if ! dots_release_is_stable_mode || [[ -z $current_version || $invoked_runtime != "$current_runtime" ]]; then
+    echo "Refusing release installation outside the managed dots release path." >&2
+    exit 1
+  fi
+fi
+
 dots_file_assert_safe_parents "$HOME/.local/state/dots/install.log" "$HOME"
 mkdir -p "$HOME/.local/state/dots"
 source "$DOTS_PATH/install/helpers/logging.sh"
@@ -52,6 +93,9 @@ if [[ -e $HOME/.config/dots/dots.conf || -L $HOME/.config/dots/dots.conf ]]; the
   dots_file_remove "$HOME/.config/dots/dots.conf" backup
   echo "Retired ~/.config/dots/dots.conf (backup at $DOTS_FILE_BACKUP)"
 fi
+
+# Keep the install lock until every convergence step has committed. Commands
+# that may run user code receive fd 9 closed while this installer retains it.
 
 # 1. mise needs its live manifest before it can install the pinned tools.
 # Seed this one config first; the complete pass below is then a no-op for it.
@@ -103,8 +147,13 @@ if ((install_done == 0)); then
   trap - EXIT
 fi
 
-dots-hook post-install
+# Existing installations may have acquired new migrations since their first
+# setup. Fresh installs just marked every shipped migration, so this is a no-op.
+"$DOTS_PATH/bin/dots-migrate" 9>&-
+"$DOTS_PATH/bin/dots-hook" post-install 9>&-
 dots-done mark install
+exec 9>&-
+unset DOTS_UPDATE_LOCK_PID
 
 echo
 echo "Done. Restart your shell (or run: source ~/.bashrc), then try: dots"

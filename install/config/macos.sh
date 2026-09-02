@@ -30,11 +30,6 @@ if command -v brew >/dev/null 2>&1; then
       fi
     fi
   fi
-  # flock(1) for the update lock — util-linux ships it on Ubuntu/WSL, macOS
-  # needs the discoteq port.
-  if ! command -v flock >/dev/null 2>&1; then
-    brew install flock
-  fi
 else
   echo "Homebrew not found — keeping /bin/bash (3.2). Install brew for modern bash and flock."
 fi

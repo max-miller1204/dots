@@ -46,8 +46,8 @@ if [[ -L $LOCK || ! -f $LOCK ]]; then
   exit 1
 fi
 if [[ $(uname -s) == "Darwin" ]]; then
-  lock_id=$(stat -f '%i' "$LOCK")
-  fd_id=$(stat -f '%i' /dev/fd/9)
+  lock_id=$(stat -f '%d:%i' "$LOCK")
+  fd_id=$(perl -e 'open(my $fh, "<&=9") or exit 1; my @s = stat($fh); print "$s[0]:$s[1]"')
 else
   lock_id=$(stat -Lc '%d:%i' "$LOCK")
   fd_id=$(stat -Lc '%d:%i' /proc/self/fd/9)

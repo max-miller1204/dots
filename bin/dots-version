@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 
-# dots:summary=Show the dots version and checkout revision
+# dots:summary=Show the active dots version and mode
 
 SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=$("$SELF_DIR/dots-path-resolve") || exit 1
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd) || exit 1
 if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-version" "$@"; fi
+source "$DOTS_PATH/install/helpers/files.sh"
+source "$DOTS_PATH/install/helpers/releases.sh"
 
 version="unknown"
-[[ -f "$DOTS_PATH/version" ]] && version=$(<"$DOTS_PATH/version")
+[[ -f $DOTS_PATH/version ]] && version=$(<"$DOTS_PATH/version")
 
-revision=""
-if git -C "$DOTS_PATH" rev-parse --short HEAD >/dev/null 2>&1; then
-  revision=" ($(git -C "$DOTS_PATH" rev-parse --short HEAD))"
+if dots_release_is_stable_mode; then
+  echo "dots $version (stable)"
+elif revision=$(git -C "$DOTS_PATH" rev-parse --short HEAD 2>/dev/null); then
+  echo "dots $version (dev $revision)"
+else
+  echo "dots $version (unmanaged)"
 fi
-
-echo "dots ${version}${revision}"

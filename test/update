@@ -207,6 +207,23 @@ DOTS_UPDATE_FORCE=1 DOTS_UPDATE_MIN_FREE_KB=9999999999999 "$ROOT/bin/dots-update
   fail "DOTS_UPDATE_FORCE did not bypass the free-space check"
 assertions=$((assertions + 3))
 
+# df parsing finds Available relative to the Capacity percentage even when
+# both the filesystem source and mountpoint contain spaces.
+mkdir -p "$SANDBOX/spaced-df"
+cat >"$SANDBOX/spaced-df/df" <<'DF'
+#!/usr/bin/env bash
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'map auto_home 4096 2048 2048 50%% /Volumes/My Disk\n'
+DF
+chmod +x "$SANDBOX/spaced-df/df"
+PATH="$SANDBOX/spaced-df:$PATH" DOTS_UPDATE_MIN_FREE_KB=1500 \
+  "$ROOT/bin/dots-update-requires-free-space" || fail "spaced df output lost available space"
+if PATH="$SANDBOX/spaced-df:$PATH" DOTS_UPDATE_MIN_FREE_KB=3000 \
+  "$ROOT/bin/dots-update-requires-free-space" >/dev/null 2>&1; then
+  fail "spaced df output bypassed the free-space guard"
+fi
+assertions=$((assertions + 2))
+
 # malformed threshold fails closed, not open
 rc=0
 out=$(DOTS_UPDATE_MIN_FREE_KB=1G "$ROOT/bin/dots-update-requires-free-space" 2>&1) || rc=$?

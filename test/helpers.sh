@@ -19,13 +19,15 @@ $1" ;;
 
 setup_sandbox() { # isolate $HOME; call once per suite
   SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/dots-test.XXXXXX")
-  trap 'rm -rf "$SANDBOX"' EXIT
+  trap 'chmod -R u+w "$SANDBOX" 2>/dev/null || true; rm -rf "$SANDBOX"' EXIT
   export HOME="$SANDBOX"
   export DOTS_PATH="$ROOT"
   export PATH="$ROOT/bin:$PATH"
   # Ambient config must not reach the suites: pipeline knobs exported in the
   # developer's shell, and host git config via the non-HOME lookup paths.
-  unset DOTS_UPDATE_FORCE DOTS_UPDATE_MIN_FREE_KB DOTS_UPDATE_LOCK \
-    DOTS_UPDATE_LOCK_PID XDG_CONFIG_HOME
+  unset DOTS_RELEASE_BASE_URL DOTS_RELEASE_HOME DOTS_RELEASE_MANIFEST_URL \
+    DOTS_UPDATE_FORCE DOTS_UPDATE_MIN_FREE_KB DOTS_UPDATE_LOCK \
+    DOTS_UPDATE_LOCK_PID DOTS_UPDATE_SKIP_RELEASE_ONCE \
+    DOTS_UPDATE_TEST_FAIL_REEXEC XDG_CONFIG_HOME
   export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 }
