@@ -428,7 +428,7 @@ dots_release_verify_installed() { # verify_installed <release-dir> <version>
 }
 
 dots_release_install_archive() { # install_archive <version> <archive> <sha256>
-  local version=$1 archive=$2 expected_sha=$3 actual_sha stage extracted ready final marker
+  local version=$1 archive=$2 expected_sha=$3 actual_sha stage extracted ready final marker candidate
   local entry verbose_listing listing_line entry_type
 
   dots_release_validate_version "$version" || {
@@ -459,6 +459,16 @@ dots_release_install_archive() { # install_archive <version> <archive> <sha256>
     echo "Refusing unowned dots release path: $final" >&2
     return 1
   }
+  for candidate in "$DOTS_RELEASES_DIR/.ready-$version-${expected_sha,,}."*; do
+    [[ -e $candidate || -L $candidate ]] || continue
+    if dots_release_verify_installed "$candidate" "$version" >/dev/null 2>&1; then
+      if mv "$candidate" "$final"; then
+        return 0
+      fi
+      echo "Could not publish recovered dots release: $version" >&2
+      return 1
+    fi
+  done
 
   if ! verbose_listing=$(tar -tvzf "$archive"); then
     echo "Cannot read dots release archive: $archive" >&2
@@ -496,7 +506,7 @@ dots_release_install_archive() { # install_archive <version> <archive> <sha256>
     rm -rf "$stage"
     return 1
   fi
-  ready=$(mktemp -d "$DOTS_RELEASES_DIR/.ready-$version.XXXXXX") || {
+  ready=$(mktemp -d "$DOTS_RELEASES_DIR/.ready-$version-${expected_sha,,}.XXXXXX") || {
     rm -rf "$stage"
     return 1
   }

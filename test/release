@@ -222,7 +222,7 @@ fi
 assertions=$((assertions + 2))
 
 # A crash after immutability but before publication leaves no final path, and a
-# retry can install the same release without manual repair.
+# retry publishes that verified tree without disturbing an unverified sibling.
 make_release 1.1.3
 crash_archive="$release_server/download/v1.1.3/dots-1.1.3.tar.gz"
 crash_sha=$(dots_release_sha256 "$crash_archive")
@@ -232,9 +232,19 @@ DOTS_RELEASE_TEST_CRASH_AT=after-release-ready bash -c \
   bash "$ROOT" 1.1.3 "$crash_archive" "$crash_sha" >/dev/null 2>&1 || rc=$?
 ((rc > 128)) || fail "release publication crash injection unexpectedly returned $rc"
 [[ ! -e $DOTS_RELEASES_DIR/1.1.3 ]] || fail "interrupted publication exposed a final release"
+shopt -s nullglob
+crash_ready=("$DOTS_RELEASES_DIR/.ready-1.1.3-$crash_sha."*)
+shopt -u nullglob
+((${#crash_ready[@]} == 1)) || fail "interrupted publication did not retain one recoverable tree"
+stale_ready=${crash_ready[0]}
+unverified_ready="$DOTS_RELEASES_DIR/.ready-1.1.3-$crash_sha.unverified"
+mkdir "$unverified_ready"
+printf 'unrelated\n' >"$unverified_ready/sentinel"
 dots_release_install_archive 1.1.3 "$crash_archive" "$crash_sha" || fail "release retry failed after publication crash"
 dots_release_verify_installed "$DOTS_RELEASES_DIR/1.1.3" 1.1.3 || fail "retried release is invalid"
-assertions=$((assertions + 3))
+[[ ! -e $stale_ready ]] || fail "release retry retained the recovered ready tree"
+[[ $(cat "$unverified_ready/sentinel") == "unrelated" ]] || fail "release retry removed an unverified ready tree"
+assertions=$((assertions + 6))
 
 # A bad checksum must not replace the active release.
 make_release 1.1.1
