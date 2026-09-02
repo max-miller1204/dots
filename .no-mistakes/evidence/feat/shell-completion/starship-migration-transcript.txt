@@ -1,0 +1,1 @@
+migration behavior: stock updated; customized file and symlink target preserved

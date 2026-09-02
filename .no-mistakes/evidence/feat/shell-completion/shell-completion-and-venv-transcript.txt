@@ -1,0 +1,32 @@
+End-user completion transcript
+
+$ dots theme sync <TAB>
+claude
+pi
+
+$ dots migrate --<TAB>
+--help
+--pending
+--check
+
+$ dots hook <TAB>
+install
+-h
+--help
+post-update
+theme-set
+post-install
+
+$ Bash: dots theme se<TAB>
+set
+
+$ Zsh: dots theme se<TAB>
+set
+
+Starship virtualenv prompt transcript
+
+$ activate project-env; render Python prompt module
+(project-env) 
+
+$ deactivate; render Python prompt module
+<empty>

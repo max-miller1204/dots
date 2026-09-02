@@ -1,0 +1,8 @@
+Zsh early completion initialization transcript
+
+compdef ready before zoxide: yes
+dots completion registered: yes
+
+Virtualenv name as rendered from Bash
+(team-env) Virtualenv name as rendered from Zsh
+(team-env) 
