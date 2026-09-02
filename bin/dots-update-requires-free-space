@@ -27,7 +27,23 @@ fi
 
 # Filesystem sources and mountpoints can both contain spaces. Capacity is the
 # stable percentage field; Available is immediately before it.
-avail_kb=$(df -Pk "$HOME" 2>/dev/null | awk 'NR == 2 { for (i = 4; i <= NF; i++) if ($i ~ /^[0-9]+%$/ && $(i - 3) ~ /^[0-9]+$/ && $(i - 2) ~ /^[0-9]+$/ && $(i - 1) ~ /^[0-9]+$/) { print $(i - 1); exit } }')
+avail_kb=$(df -Pk "$HOME" 2>/dev/null | awk '
+  NR == 2 {
+    for (i = 4; i <= NF; i++) {
+      capacity = $i
+      sub(/%$/, "", capacity)
+      blocks = $(i - 3)
+      used = $(i - 2)
+      available = $(i - 1)
+      if ($i ~ /^[0-9]+%$/ && capacity >= 0 && capacity <= 100 &&
+        blocks ~ /^[0-9]+$/ && used ~ /^[0-9]+$/ && available ~ /^[0-9]+$/ &&
+        used <= blocks && available <= blocks && used + available <= blocks) {
+        print available
+        exit
+      }
+    }
+  }
+')
 [[ $avail_kb =~ ^[0-9]+$ ]] || exit 0
 
 if ((avail_kb < min_free_kb)); then

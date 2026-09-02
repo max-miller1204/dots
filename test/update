@@ -213,12 +213,12 @@ mkdir -p "$SANDBOX/spaced-df"
 cat >"$SANDBOX/spaced-df/df" <<'DF'
 #!/usr/bin/env bash
 printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
-printf 'map 99%% auto_home 4096 2048 2048 50%% /Volumes/My Disk\n'
+printf 'map 4096 2048 9999 99%% auto_home 4096 2048 8 99%% /Volumes/My Disk\n'
 DF
 chmod +x "$SANDBOX/spaced-df/df"
-PATH="$SANDBOX/spaced-df:$PATH" DOTS_UPDATE_MIN_FREE_KB=1500 \
+PATH="$SANDBOX/spaced-df:$PATH" DOTS_UPDATE_MIN_FREE_KB=1 \
   "$ROOT/bin/dots-update-requires-free-space" || fail "spaced df output lost available space"
-if PATH="$SANDBOX/spaced-df:$PATH" DOTS_UPDATE_MIN_FREE_KB=3000 \
+if PATH="$SANDBOX/spaced-df:$PATH" DOTS_UPDATE_MIN_FREE_KB=1000 \
   "$ROOT/bin/dots-update-requires-free-space" >/dev/null 2>&1; then
   fail "spaced df output bypassed the free-space guard"
 fi
