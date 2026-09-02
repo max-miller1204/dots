@@ -3,7 +3,7 @@ minimum_release_age = "0s"
 
 [tools]
 bat = "latest"
-claude = "latest"
+claude = "2"
 codex = "latest"
 eza = "latest"
 fastfetch = "latest"
