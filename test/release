@@ -83,6 +83,12 @@ integrity_backup="$SANDBOX/dots-version.backup"
 cp -p "$integrity_probe" "$integrity_backup"
 chmod u+w "$integrity_probe"
 printf '\n# modified\n' >>"$integrity_probe"
+out=$("$ROOT/bin/dots-version-list")
+assert_contains "$out" "! 1.1.0 (invalid)" "version list labels a modified release invalid"
+case "$out" in
+  *"* 1.1.0"*) fail "version list treated a modified release as current" ;;
+esac
+assertions=$((assertions + 1))
 if dots_release_verify_installed "$integrity_release" 1.1.0 >/dev/null 2>&1; then
   fail "modified installed release passed integrity verification"
 fi

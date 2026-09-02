@@ -26,10 +26,14 @@ if [[ -d $DOTS_RELEASES_DIR && ! -L $DOTS_RELEASES_DIR ]]; then
   releases=("$DOTS_RELEASES_DIR"/*)
   shopt -u nullglob
   for release in "${releases[@]}"; do
-    [[ -d $release && ! -L $release ]] || continue
     version=${release##*/}
     dots_release_validate_version "$version" || continue
-    [[ -f $release/.dots-release ]] || continue
+    if [[ ! -d $release || -L $release ]] ||
+      ! dots_release_verify_installed "$release" "$version" >/dev/null 2>&1; then
+      printf '! %s (invalid)\n' "$version"
+      found=1
+      continue
+    fi
     marker=" "
     [[ $version == "$current" ]] && marker="*"
     [[ $version == "$previous" && $version != "$current" ]] && marker="-"
