@@ -16,7 +16,8 @@ METADATA_SCAN_LIMIT=20
 declare -A emitted=()
 
 metadata() { # metadata <file> <key>
-  local file=$1 key=$2 line count=0 prefix="# dots:$2="
+  local file=$1 key=$2 line count=0 prefix
+  prefix="# dots:$key="
   while ((count < METADATA_SCAN_LIMIT)) && IFS= read -r line; do
     count=$((count + 1))
     if [[ $line == "$prefix"* ]]; then
