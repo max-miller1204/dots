@@ -16,8 +16,9 @@ transaction-protected `current` and `previous` symlinks. The checkout at
 returns to the stable `current` release.
 
 The same runtime runs on macOS, Ubuntu, and WSL; tools come from mise (manifest:
-`config/mise/config.toml`), never brew or apt. The one exception: on macOS,
-`install/config/macos.sh` uses Homebrew to install modern bash and flock.
+`config/mise/config.toml`), never brew or apt. The system-level exceptions on
+macOS are Homebrew Bash as the dots command runtime and `flock` for locking.
+Dots does not change the account's configured login shell.
 
 `$DOTS_PATH` identifies the active runtime. Its canonical path is stored as
 plain, non-executable data in `~/.config/dots/path`; the file must be a regular,
@@ -48,7 +49,7 @@ bin/dots-*                 →  on PATH via env-bootstrap (active release or dev
 config/**                  →  ~/.config/**                  (seed + resync source)
 default/bashrc, bash_profile, zshrc
                            →  ~/.bashrc, ~/.bash_profile, ~/.zshrc  (seeded, then yours;
-                              bash_profile delegates to bashrc for macOS login shells)
+                              bash_profile supports optional Bash login shells)
 default/bash/env-bootstrap →  sourced by both rc files      (DOTS_PATH + PATH)
 default/bash/{shell,aliases,functions,init}
                            →  sourced by both rc files      (portable shell UX)
