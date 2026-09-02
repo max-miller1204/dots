@@ -27,6 +27,7 @@ if ((BASH_VERSINFO[0] < 4)); then
   fi
 
   brew_prefix=$("$brew_bin" --prefix) || exit 1
+  export PATH="$brew_prefix/bin:$brew_prefix/sbin:$PATH"
   modern_bash="$brew_prefix/bin/bash"
   if [[ ! -x $modern_bash ]]; then
     "$brew_bin" install bash || exit 1

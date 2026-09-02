@@ -65,7 +65,22 @@ BREW
       "$stock_bash" "$repo/bin/dots-install" --developer >/dev/null
   )
   grep -qx 'install bash' "$HOME/brew-calls" || fail "stock macOS Bash did not bootstrap Homebrew Bash"
-  assertions=$((assertions + 1))
+
+  fallback_home="$SANDBOX/fallback-home"
+  fallback_runtime="$SANDBOX/fallback-runtime"
+  fallback_path="$stub:$fallback_runtime:/usr/bin:/bin"
+  mkdir -p "$fallback_home" "$fallback_runtime"
+  ln -s "$BASH" "$fallback_runtime/bash"
+  if PATH="$fallback_path" command -v brew >/dev/null 2>&1; then
+    fail "fallback bootstrap test unexpectedly found brew on PATH"
+  fi
+  (
+    cd /
+    HOME="$fallback_home" PATH="$fallback_path" \
+      "$stock_bash" "$repo/bin/dots-install" --developer >/dev/null
+  )
+  [[ -f $fallback_home/.local/state/dots/done/install ]] || fail "known-path Homebrew fallback did not complete install"
+  assertions=$((assertions + 2))
 else
   (
     cd /
