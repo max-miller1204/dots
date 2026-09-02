@@ -8,7 +8,7 @@
 # command inherits: the kernel releases it when the last holder exits — any
 # exit, including SIGKILL — so there is no stale state to reclaim and no
 # signal forwarding to get right. Ubuntu/WSL ship flock in util-linux; on
-# macOS install/config/macos.sh installs the discoteq port (brew), whose
+# macOS install/config/flock.sh installs the discoteq port (brew), whose
 # fd mode, -n, and -E behavior we verified against util-linux's. The lock
 # path avoids TMPDIR, which differs between GUI and cron/ssh contexts on
 # macOS and would split the lock across them.

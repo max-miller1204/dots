@@ -2,11 +2,9 @@
 # install (with a backup of any previous version) and never touched by
 # `dots update`. `dots reinstall configs` resets it to the shipped default.
 #
-# macOS terminals open *login* shells, which read this file and skip
-# ~/.bashrc entirely — so everything lives in ~/.bashrc and this file
-# delegates to it. Linux terminals open non-login shells and hit ~/.bashrc
-# directly, making the two OSes behave the same.
-
-export BASH_SILENCE_DEPRECATION_WARNING=1
+# Login Bash reads this file and skips ~/.bashrc, so keep the interactive
+# setup in one place and delegate to it here. This supports Linux login shells
+# and macOS users who explicitly choose Homebrew Bash instead of the default
+# Zsh login shell.
 
 [ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"

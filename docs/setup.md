@@ -2,7 +2,7 @@
 
 ## Recommended installation
 
-Dots supports macOS, Ubuntu, and WSL. Install `git` and `curl` first. On macOS, install [Homebrew](https://brew.sh) as well; dots uses it to provision modern Bash and `flock`. Broader Bash completion is an optional package described below.
+Dots supports macOS, Ubuntu, and WSL. Install `git` and `curl` first. On macOS, install [Homebrew](https://brew.sh) as well; dots uses it for `flock` and a modern Bash command runtime while leaving Apple's default Zsh login shell unchanged. Broader Bash completion is an optional package described below.
 
 ### Optional Bash completion framework
 
@@ -38,6 +38,30 @@ Homebrew, and Linuxbrew. It also loads context-aware completion for nested
 `dots` commands. Zsh uses its native completion system and does not use the
 `bash-completion` package.
 
+### Optional Bash login shell on macOS
+
+Dots uses Homebrew Bash to run its commands, but it neither registers Bash as a
+login shell nor changes the macOS account from Zsh. To opt into Bash for
+interactive sessions, register the Homebrew binary and select it explicitly:
+
+```bash
+brew install bash
+brew_bash="$(brew --prefix)/bin/bash"
+grep -qxF "$brew_bash" /etc/shells || printf '%s\n' "$brew_bash" | sudo tee -a /etc/shells
+chsh -s "$brew_bash"
+exec "$brew_bash" -l
+```
+
+If the optional completion framework is installed, verify both it and the
+built-in dots completion after Bash starts:
+
+```bash
+type _completion_loader
+complete -p dots
+```
+
+Switch back to the macOS default at any time with `chsh -s /bin/zsh`.
+
 Use mise's official standalone release on every platform:
 
 ```bash
@@ -72,19 +96,6 @@ command -v mise
 mise --version
 command -v dots
 dots
-```
-
-After switching back to Bash, start a fresh login shell so `~/.bashrc` loads:
-
-```bash
-exec bash -l
-```
-
-Then verify both the optional framework and dots-specific completion:
-
-```bash
-type _completion_loader  # present when bash-completion is installed
-complete -p dots
 ```
 
 The recommended mise path is `~/.local/bin/mise`.

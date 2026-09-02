@@ -16,9 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # macOS pins /bin/bash at 3.2 and ships no flock; mirror what
-      # install/config/macos.sh sets up on a real machine.
-      - name: Install Homebrew bash and flock
+      # macOS pins /bin/bash at 3.2 and ships no flock. Install the command
+      # runtime and lock dependency without changing the Zsh login shell.
+      - name: Install Bash command runtime and flock
         if: runner.os == 'macOS'
         run: brew install bash flock
 

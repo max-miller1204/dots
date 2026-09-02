@@ -5,6 +5,39 @@
 #
 # Stable is the default. --developer installs directly from this checkout.
 
+# macOS starts with Bash 3.2 even though Zsh is the account login shell. The
+# installer must bootstrap its command runtime before it sources helpers that
+# use Bash 4+ features. This does not register Bash in /etc/shells or change
+# the user's login shell.
+if ((BASH_VERSINFO[0] < 4)); then
+  if [[ $(uname -s) != "Darwin" ]]; then
+    echo "dots requires Bash >= 4; this is Bash ${BASH_VERSION}." >&2
+    exit 1
+  fi
+
+  brew_bin=$(command -v brew 2>/dev/null || true)
+  if [[ -z $brew_bin && -x /opt/homebrew/bin/brew ]]; then
+    brew_bin=/opt/homebrew/bin/brew
+  elif [[ -z $brew_bin && -x /usr/local/bin/brew ]]; then
+    brew_bin=/usr/local/bin/brew
+  fi
+  if [[ -z $brew_bin ]]; then
+    echo "Homebrew is required on macOS to install the dots Bash runtime and flock." >&2
+    exit 1
+  fi
+
+  brew_prefix=$("$brew_bin" --prefix) || exit 1
+  modern_bash="$brew_prefix/bin/bash"
+  if [[ ! -x $modern_bash ]]; then
+    "$brew_bin" install bash || exit 1
+  fi
+  if [[ ! -x $modern_bash ]]; then
+    echo "Homebrew Bash was not installed at $modern_bash." >&2
+    exit 1
+  fi
+  exec "$modern_bash" "$0" "$@"
+fi
+
 set -eo pipefail
 
 DOTS_PATH=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -156,4 +189,4 @@ exec 9>&-
 unset DOTS_UPDATE_LOCK_PID
 
 echo
-echo "Done. Restart your shell (or run: source ~/.bashrc), then try: dots"
+echo 'Done. Open a new terminal (or run: exec "$SHELL" -l), then try: dots'

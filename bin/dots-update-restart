@@ -27,7 +27,7 @@ for marker in "$state_dir"/restart-*-required; do
   name=${marker##*/restart-}
   name=${name%-required}
   case "$name" in
-    shell) echo "Restart required: shell — open a new terminal or 'source ~/.bashrc'." ;;
+    shell) echo 'Restart required: shell — open a new terminal or run: exec "$SHELL" -l' ;;
     *) echo "Restart required: $name" ;;
   esac
   rm -f "$marker"

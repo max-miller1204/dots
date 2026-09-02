@@ -8,19 +8,19 @@ This repo replicates omarchy's dotfiles architecture on macOS. Read
 - Two spaces for indentation, no tabs
 - Shebangs must use `#!/usr/bin/env bash` consistently (never `#!/bin/bash` —
   a deliberate deviation from omarchy: macOS pins `/bin/bash` at 3.2, so the
-  modern bash lives at Homebrew's prefix and is found via PATH, which
+  command runtime lives at Homebrew's prefix and is found via PATH, which
   `default/bash/env-bootstrap` guarantees)
 - **Bash >= 4 is assumed; write bash 5 idioms** as omarchy does: `declare -A`,
   `mapfile`, `${var,,}`, `${var//pat/rep}` are all fine. `bin/dots` guards the
-  version and points at the fix. On macOS, `install/config/macos.sh` installs
-  Homebrew bash and sets it as the login shell.
+  version and points at the fix. On macOS, `bin/dots-install` bootstraps
+  Homebrew Bash for scripts but leaves `/bin/zsh` as the login shell.
 - Scripts under `install/` are sourced and intentionally omit shebangs
 - **Scripts must run on macOS (BSD userland) and Ubuntu/WSL (GNU userland)** —
   bash is uniform now, but the userland is not: avoid flags that differ
   (`sed -i` without a suffix, `date -r`, `ls --color` outside a `uname`
   guard). mise is the only layer for dev tools; Homebrew exists on macOS
-  solely for system-level pieces (bash, flock), and only inside
-  `install/config/macos.sh` — never in shared code.
+  solely for system-level pieces (Bash, flock), and only inside
+  `bin/dots-install` and `install/config/flock.sh` — never in shared code.
 - Use `[[ ]]` for string/file tests and `(( ))` for numeric tests
 - In `[[ ]]`, don't quote variables, but do quote string literals when comparing
 - For strings/paths with spaces, quote them instead of escaping spaces

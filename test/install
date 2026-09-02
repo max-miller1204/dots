@@ -37,10 +37,41 @@ MISE
 chmod +x "$stub/mise"
 
 # Launch from outside the checkout; mise must still see the seeded live manifest.
-(
-  cd /
-  PATH="$stub:$runtime_path" "$repo/bin/dots-install" --developer >/dev/null
-)
+# On macOS, exercise the stock Bash 3.2 bootstrap into a Homebrew-style modern
+# command runtime while leaving the account login shell untouched.
+stock_bash=/bin/bash
+stock_bash_major=$($stock_bash -c 'printf "%s\n" "${BASH_VERSINFO[0]}"')
+if [[ $(uname -s) == "Darwin" ]] && ((stock_bash_major < 4)); then
+  bootstrap_stub="$SANDBOX/bootstrap-stub"
+  bootstrap_prefix="$SANDBOX/homebrew"
+  mkdir -p "$bootstrap_stub" "$bootstrap_prefix/bin"
+  cat >"$bootstrap_stub/brew" <<'BREW'
+#!/usr/bin/env bash
+case "$1" in
+  --prefix) printf '%s\n' "$BREW_PREFIX" ;;
+  install)
+    [[ $2 == "bash" ]] || exit 2
+    ln -s "$MODERN_BASH" "$BREW_PREFIX/bin/bash"
+    printf 'install bash\n' >>"$HOME/brew-calls"
+    ;;
+  *) exit 2 ;;
+esac
+BREW
+  chmod +x "$bootstrap_stub/brew"
+  (
+    cd /
+    HOME="$HOME" BREW_PREFIX="$bootstrap_prefix" MODERN_BASH="$BASH" \
+      PATH="$bootstrap_stub:$stub:$runtime_path" \
+      "$stock_bash" "$repo/bin/dots-install" --developer >/dev/null
+  )
+  grep -qx 'install bash' "$HOME/brew-calls" || fail "stock macOS Bash did not bootstrap Homebrew Bash"
+  assertions=$((assertions + 1))
+else
+  (
+    cd /
+    PATH="$stub:$runtime_path" "$repo/bin/dots-install" --developer >/dev/null
+  )
+fi
 [[ -f "$HOME/.config/mise/config.toml" ]] || fail "fresh install did not seed mise manifest"
 grep -q '^install$' "$HOME/mise-calls" || fail "fresh install did not run mise after seeding"
 [[ $(cat "$HOME/.config/dots/path") == "$canonical_repo" ]] || fail "checkout path was not stored as plain data"
@@ -127,5 +158,34 @@ if HOME="$bad_home" PATH="$stub:$runtime_path" "$bad_repo/bin/dots-install" --de
 fi
 [[ ! -e "$bad_home/.local/state/dots/done/install" ]] || fail "invalid-path install was marked complete"
 assertions=$((assertions + 2))
+
+# macOS platform setup must not register Bash or change the account login
+# shell. Keep sentinel commands in PATH so a regression is observable without
+# touching host account state.
+macos_stub="$SANDBOX/macos-stub"
+macos_brew_prefix="$SANDBOX/macos-homebrew"
+mkdir -p "$macos_stub" "$macos_brew_prefix/bin"
+ln -s "$BASH" "$macos_brew_prefix/bin/bash"
+cat >"$macos_stub/brew" <<'BREW'
+#!/usr/bin/env bash
+[[ $1 == "--prefix" ]] || exit 2
+printf '%s\n' "$BREW_PREFIX"
+BREW
+cat >"$macos_stub/uname" <<'UNAME'
+#!/usr/bin/env bash
+printf 'Darwin\n'
+UNAME
+for forbidden_command in chsh dscl sudo; do
+  cat >"$macos_stub/$forbidden_command" <<'FORBIDDEN'
+#!/usr/bin/env bash
+touch "$HOME/login-shell-changed"
+exit 99
+FORBIDDEN
+done
+chmod +x "$macos_stub"/*
+BREW_PREFIX="$macos_brew_prefix" PATH="$macos_stub:$runtime_path" \
+  bash -c 'source "$1"' bash "$ROOT/install/config/macos.sh" >/dev/null
+[[ ! -e $HOME/login-shell-changed ]] || fail "macOS setup changed the account login shell"
+assertions=$((assertions + 1))
 
 echo "ok: $assertions assertions passed (install)"
