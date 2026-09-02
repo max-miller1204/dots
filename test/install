@@ -67,20 +67,40 @@ BREW
   grep -qx 'install bash' "$HOME/brew-calls" || fail "stock macOS Bash did not bootstrap Homebrew Bash"
 
   fallback_home="$SANDBOX/fallback-home"
+  fallback_prefix="$fallback_home/homebrew"
   fallback_runtime="$SANDBOX/fallback-runtime"
   fallback_path="$stub:$fallback_runtime:/usr/bin:/bin"
-  mkdir -p "$fallback_home" "$fallback_runtime"
+  mkdir -p "$fallback_prefix/bin" "$fallback_prefix/sbin" "$fallback_runtime"
   ln -s "$BASH" "$fallback_runtime/bash"
+  ln -s "$BASH" "$fallback_prefix/bin/bash"
+  cat >"$fallback_prefix/bin/brew" <<'BREW'
+#!/usr/bin/env bash
+case "$1" in
+  --prefix) printf '%s\n' "$BREW_PREFIX" ;;
+  install)
+    touch "$HOME/unexpected-brew-install"
+    exit 99
+    ;;
+  *) exit 2 ;;
+esac
+BREW
+  cat >"$fallback_prefix/sbin/flock" <<'FLOCK'
+#!/usr/bin/env bash
+exit 0
+FLOCK
+  chmod +x "$fallback_prefix/bin/brew" "$fallback_prefix/sbin/flock"
   if PATH="$fallback_path" command -v brew >/dev/null 2>&1; then
     fail "fallback bootstrap test unexpectedly found brew on PATH"
   fi
   (
     cd /
-    HOME="$fallback_home" PATH="$fallback_path" \
+    HOME="$fallback_home" BREW_PREFIX="$fallback_prefix" \
+      DOTS_TEST_HOMEBREW_BIN="$fallback_prefix/bin/brew" PATH="$fallback_path" \
       "$stock_bash" "$repo/bin/dots-install" --developer >/dev/null
   )
   [[ -f $fallback_home/.local/state/dots/done/install ]] || fail "known-path Homebrew fallback did not complete install"
-  assertions=$((assertions + 2))
+  [[ ! -e $fallback_home/unexpected-brew-install ]] || fail "known-path fallback invoked Homebrew install"
+  assertions=$((assertions + 3))
 else
   (
     cd /

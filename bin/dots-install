@@ -16,7 +16,10 @@ if ((BASH_VERSINFO[0] < 4)); then
   fi
 
   brew_bin=$(command -v brew 2>/dev/null || true)
-  if [[ -z $brew_bin && -x /opt/homebrew/bin/brew ]]; then
+  # Tests can supply a sandboxed known-path fallback without invoking host Homebrew.
+  if [[ -z $brew_bin && -x ${DOTS_TEST_HOMEBREW_BIN:-} ]]; then
+    brew_bin=$DOTS_TEST_HOMEBREW_BIN
+  elif [[ -z $brew_bin && -x /opt/homebrew/bin/brew ]]; then
     brew_bin=/opt/homebrew/bin/brew
   elif [[ -z $brew_bin && -x /usr/local/bin/brew ]]; then
     brew_bin=/usr/local/bin/brew
