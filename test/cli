@@ -111,6 +111,37 @@ PATH="/usr/bin:/bin" DOTS_PATH="$ROOT" bash -c 'source "$1"; [[ $PATH == "$DOTS_
   bash "$ROOT/default/bashrc" || fail "non-interactive bashrc missed env bootstrap"
 assertions=$((assertions + 2))
 
+# Interactive Zsh discovers both native completion conventions under prefixes
+# on PATH and initializes compdef before third-party integrations consume it.
+if command -v zsh >/dev/null 2>&1; then
+  completion_prefix="$SANDBOX/completion-prefix"
+  mkdir -p "$completion_prefix/bin" "$completion_prefix/share/zsh/site-functions" \
+    "$completion_prefix/share/zsh/vendor-completions"
+  cat >"$completion_prefix/share/zsh/site-functions/_dots_probe" <<'EOF'
+#compdef dots-probe
+_arguments
+EOF
+  cat >"$completion_prefix/share/zsh/vendor-completions/_vendor_probe" <<'EOF'
+#compdef vendor-probe
+_arguments
+EOF
+  cat >"$completion_prefix/bin/zoxide" <<'EOF'
+#!/usr/bin/env bash
+cat <<'ZSH'
+(( $+functions[compdef] )) && typeset -g DOTS_COMPDEF_READY=1
+ZSH
+EOF
+  chmod +x "$completion_prefix/bin/zoxide"
+  PATH="$completion_prefix/bin:/usr/bin:/bin" DOTS_PATH="$ROOT" zsh -fic \
+    'source "$1"; site_dir="$2/share/zsh/site-functions";
+      vendor_dir="$2/share/zsh/vendor-completions";
+      (( ${fpath[(Ie)$site_dir]} && ${fpath[(Ie)$vendor_dir]} &&
+        $+functions[_complete] && $+functions[_dots_probe] &&
+        $+functions[_vendor_probe] && DOTS_COMPDEF_READY ))' \
+    zsh "$ROOT/default/zshrc" "$completion_prefix" || fail "Zsh rc did not initialize native completions before integrations"
+  assertions=$((assertions + 1))
+fi
+
 mkdir -p "$SANDBOX/eza-stub"
 printf '#!/usr/bin/env bash\nexit 0\n' >"$SANDBOX/eza-stub/eza"
 chmod +x "$SANDBOX/eza-stub/eza"
@@ -173,8 +204,9 @@ assertions=$((assertions + 1))
 # Direct commands that have not sourced shell startup still honor the serialized
 # canonical checkout path.
 serialized_repo="$SANDBOX/serialized checkout"
-mkdir -p "$serialized_repo/themes/serialized-probe" "$serialized_repo/default" "$serialized_repo/bin"
+mkdir -p "$serialized_repo/themes/serialized-probe" "$serialized_repo/default/zsh" "$serialized_repo/bin"
 cp -R "$ROOT/default/bash" "$serialized_repo/default/bash"
+cp "$ROOT/default/zsh/completions" "$serialized_repo/default/zsh/completions"
 cp "$ROOT/bin/dots-theme-list" "$ROOT/bin/dots-path-resolve" "$serialized_repo/bin/"
 printf 'accent = "#000000"\n' >"$serialized_repo/themes/serialized-probe/colors.toml"
 printf '%s\n' "$serialized_repo" >"$HOME/.config/dots/path"

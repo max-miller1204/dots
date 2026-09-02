@@ -2,7 +2,41 @@
 
 ## Recommended installation
 
-Dots supports macOS, Ubuntu, and WSL. Install `git` and `curl` first. On macOS, install [Homebrew](https://brew.sh) as well; dots uses it only to provision modern Bash and `flock`.
+Dots supports macOS, Ubuntu, and WSL. Install `git` and `curl` first. On macOS, install [Homebrew](https://brew.sh) as well; dots uses it to provision modern Bash and `flock`. Broader Bash completion is an optional package described below.
+
+### Optional Bash completion framework
+
+Dots provides its own nested-command completion without extra packages. For broader command-specific completion for tools such as Git and system utilities, install the platform's `bash-completion` package:
+
+**macOS (Apple Silicon or Intel):**
+
+```bash
+brew install bash-completion@2
+```
+
+**Ubuntu or WSL:**
+
+```bash
+sudo apt-get update
+sudo apt-get install -y bash-completion
+```
+
+For reference, other common Linux package commands are:
+
+```bash
+# Arch Linux; Omarchy already includes this package
+sudo pacman -S bash-completion
+
+# Fedora
+sudo dnf install bash-completion
+```
+
+Dots does not install optional system packages automatically. Its interactive
+`~/.bashrc` discovers completion loaders in standard system locations and under
+prefixes already present on `PATH`, so the same configuration works with `/usr`,
+Homebrew, and Linuxbrew. It also loads context-aware completion for nested
+`dots` commands. Zsh uses its native completion system and does not use the
+`bash-completion` package.
 
 Use mise's official standalone release on every platform:
 
@@ -22,13 +56,26 @@ exec "$SHELL" -l
 
 `dots install` is safe to rerun. It copies the shipped defaults, installs the mise tool manifest, configures the shell, and selects the default theme.
 
-Verify the result:
+Verify the installation:
 
 ```bash
 command -v mise
 mise --version
 command -v dots
 dots
+```
+
+After switching back to Bash, start a fresh login shell so `~/.bashrc` loads:
+
+```bash
+exec bash -l
+```
+
+Then verify both the optional framework and dots-specific completion:
+
+```bash
+type _completion_loader  # present when bash-completion is installed
+complete -p dots
 ```
 
 The recommended mise path is `~/.local/bin/mise`.
@@ -96,6 +143,18 @@ git pull
 ### `mise self-update` fails under apt
 
 Replace apt-managed mise using the instructions above. Dots intentionally uses the official standalone installation on every supported platform.
+
+### An activated Python virtualenv is missing from the prompt
+
+Starship owns the prompt in both Bash and Zsh, so Python's activation script
+cannot reliably preserve its direct `PS1` change. The shipped Starship config
+instead reads `VIRTUAL_ENV` through its Python module and renders `(name)`.
+Run `dots update` to migrate an unchanged stock config, or refresh a customized
+copy when you are ready to replace it (the old file is backed up and diffed):
+
+```bash
+dots refresh config starship.toml
+```
 
 Install and update transcripts live at:
 

@@ -2,7 +2,6 @@
 
 # dots:summary=Sync the generated theme to Pi
 # dots:args=[--activate]
-# dots:hidden=true
 
 set -euo pipefail
 

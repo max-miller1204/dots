@@ -1,0 +1,27 @@
+#compdef dots
+
+_dots() {
+  local helper candidate
+  local -a consumed candidates
+
+  helper="$DOTS_PATH/bin/dots-completion-candidates"
+  [[ -x $helper ]] || return 1
+
+  consumed=()
+  if ((CURRENT > 2)); then
+    consumed=("${words[2,$((CURRENT - 1))]}")
+  fi
+
+  candidates=()
+  while IFS= read -r candidate; do
+    [[ -n $candidate ]] && candidates+=("$candidate")
+  done < <("$helper" "${consumed[@]}")
+
+  if ((${#candidates[@]})); then
+    compadd -- "${candidates[@]}" || _default
+  else
+    _default
+  fi
+}
+
+_dots "$@"

@@ -1,0 +1,22 @@
+# Native completion setup for interactive Zsh.
+
+[[ -o interactive ]] || return 0
+
+# Discover completions installed with the checkout, package-manager prefixes,
+# and Debian/Ubuntu's vendor-completions convention.
+dots_completion_paths=("$DOTS_PATH/default/zsh/site-functions")
+for dots_bin_dir in ${(s.:.)PATH}; do
+  [[ $dots_bin_dir == /* ]] || continue
+  dots_completion_prefix=${dots_bin_dir:h}
+  for dots_completion_subdir in site-functions vendor-completions; do
+    dots_completion_dir="$dots_completion_prefix/share/zsh/$dots_completion_subdir"
+    [[ -d $dots_completion_dir ]] && dots_completion_paths+=("$dots_completion_dir")
+  done
+done
+fpath=("${dots_completion_paths[@]}" "${fpath[@]}")
+typeset -U fpath
+unset dots_bin_dir dots_completion_dir dots_completion_paths \
+  dots_completion_prefix dots_completion_subdir
+
+autoload -Uz compinit
+compinit

@@ -4,6 +4,35 @@ if [[ -n ${BASH_VERSION:-} ]]; then
   HISTCONTROL=ignoreboth:erasedups
   HISTSIZE=32768
   HISTFILESIZE=$HISTSIZE
+
+  # Load the first bash-completion installation found under a prefix already
+  # on PATH. Also cover system packages whose /etc loader does not live below
+  # the /usr prefix used by their commands (for example Fedora and Debian).
+  if [[ -z ${BASH_COMPLETION_VERSINFO:-} ]]; then
+    dots_bash_completion_candidates=()
+    IFS=: read -r -a dots_path_dirs <<<"$PATH"
+    for dots_path_dir in "${dots_path_dirs[@]}"; do
+      [[ $dots_path_dir == /*/bin ]] || continue
+      dots_path_prefix=${dots_path_dir%/bin}
+      dots_bash_completion_candidates+=(
+        "$dots_path_prefix/etc/profile.d/bash_completion.sh"
+        "$dots_path_prefix/share/bash-completion/bash_completion"
+      )
+    done
+    dots_bash_completion_candidates+=(
+      /etc/profile.d/bash_completion.sh
+      /etc/bash_completion
+      /usr/share/bash-completion/bash_completion
+    )
+    for dots_bash_completion in "${dots_bash_completion_candidates[@]}"; do
+      if [[ -r $dots_bash_completion ]]; then
+        . "$dots_bash_completion"
+        break
+      fi
+    done
+    unset dots_bash_completion dots_bash_completion_candidates dots_path_dir \
+      dots_path_dirs dots_path_prefix
+  fi
 elif [[ -n ${ZSH_VERSION:-} ]]; then
   HISTFILE=${ZDOTDIR:-$HOME}/.zsh_history
   HISTSIZE=32768
