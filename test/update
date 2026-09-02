@@ -222,7 +222,17 @@ if PATH="$SANDBOX/spaced-df:$PATH" DOTS_UPDATE_MIN_FREE_KB=1000 \
   "$ROOT/bin/dots-update-requires-free-space" >/dev/null 2>&1; then
   fail "spaced df output bypassed the free-space guard"
 fi
-assertions=$((assertions + 2))
+cat >"$SANDBOX/spaced-df/df" <<'DF'
+#!/usr/bin/env bash
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'map 100 90 10 90%% auto_home 4096 2048 8 99%% /Volumes/My Disk\n'
+DF
+chmod +x "$SANDBOX/spaced-df/df"
+if PATH="$SANDBOX/spaced-df:$PATH" DOTS_UPDATE_MIN_FREE_KB=9 \
+  "$ROOT/bin/dots-update-requires-free-space" >/dev/null 2>&1; then
+  fail "ambiguous df output bypassed the free-space guard"
+fi
+assertions=$((assertions + 3))
 
 # malformed threshold fails closed, not open
 rc=0

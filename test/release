@@ -169,6 +169,28 @@ done
 [[ -z $first_migration || -f "$HOME/.local/state/dots/migrations/$(basename "$first_migration")" ]] || fail "version install did not run pending migrations"
 [[ $(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS") == "1.1.0" ]] || fail "previous release was not retained"
 
+rc=0
+DOTS_RELEASE_TEST_FAIL_AT=after-previous dots_release_activate 1.1.0 >/dev/null 2>&1 || rc=$?
+((rc == 86)) || fail "pointer failure injection returned $rc instead of 86"
+[[ $(readlink "$DOTS_RELEASE_CURRENT") == "releases/1.1.1" ]] || fail "failed activation changed current"
+[[ $(readlink "$DOTS_RELEASE_PREVIOUS") == "releases/1.1.1" ]] || fail "failure injection did not reach partial pointer state"
+[[ -f $DOTS_RELEASE_POINTER_TRANSACTION ]] || fail "failed activation left no recovery transaction"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.1" ]] || fail "failed activation did not restore current"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS") == "1.1.0" ]] || fail "failed activation lost the prior rollback target"
+[[ ! -e $DOTS_RELEASE_POINTER_TRANSACTION ]] || fail "recovered activation retained its transaction"
+
+rc=0
+DOTS_RELEASE_TEST_CRASH_AT=after-current bash -c \
+  'source "$1/install/helpers/files.sh"; source "$1/install/helpers/releases.sh"; dots_release_activate 1.1.0' \
+  bash "$ROOT" >/dev/null 2>&1 || rc=$?
+((rc > 128)) || fail "pointer crash injection unexpectedly returned $rc"
+[[ -f $DOTS_RELEASE_POINTER_TRANSACTION ]] || fail "interrupted activation left no recovery transaction"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.0" ]] || fail "completed pointer transition was not recovered"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS") == "1.1.1" ]] || fail "completed transition lost its rollback target"
+[[ ! -e $DOTS_RELEASE_POINTER_TRANSACTION ]] || fail "completed recovery retained its transaction"
+dots_release_activate 1.1.1 || fail "could not restore release state after recovery checks"
+assertions=$((assertions + 12))
+
 # Every command that moves an active pointer shares the update lock.
 "$DOTS_RELEASE_CURRENT/bin/dots-update-lock" sleep 30 &
 lock_pid=$!

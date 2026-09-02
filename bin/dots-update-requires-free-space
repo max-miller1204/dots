@@ -32,18 +32,27 @@ avail_kb=$(df -Pk "$HOME" 2>/dev/null | awk '
     for (i = 4; i <= NF; i++) {
       capacity = $i
       sub(/%$/, "", capacity)
+      capacity += 0
       blocks = $(i - 3)
       used = $(i - 2)
       available = $(i - 1)
       if ($i ~ /^[0-9]+%$/ && capacity >= 0 && capacity <= 100 &&
         blocks ~ /^[0-9]+$/ && used ~ /^[0-9]+$/ && available ~ /^[0-9]+$/ &&
         used <= blocks && available <= blocks && used + available <= blocks) {
-        print available
-        exit
+        matches++
+        candidate = available
       }
     }
   }
+  END {
+    if (matches == 1) print candidate
+    if (matches > 1) print "ambiguous"
+  }
 ')
+if [[ $avail_kb == "ambiguous" ]]; then
+  echo "Could not determine available disk space unambiguously." >&2
+  exit 1
+fi
 [[ $avail_kb =~ ^[0-9]+$ ]] || exit 0
 
 if ((avail_kb < min_free_kb)); then

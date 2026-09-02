@@ -5,6 +5,7 @@ DOTS_RELEASE_HOME=${DOTS_RELEASE_HOME:-$HOME/.local/share/dots}
 DOTS_RELEASES_DIR="$DOTS_RELEASE_HOME/releases"
 DOTS_RELEASE_CURRENT="$DOTS_RELEASE_HOME/current"
 DOTS_RELEASE_PREVIOUS="$DOTS_RELEASE_HOME/previous"
+DOTS_RELEASE_POINTER_TRANSACTION="$DOTS_RELEASE_HOME/.pointer-transaction"
 DOTS_RELEASE_BASE_URL=${DOTS_RELEASE_BASE_URL:-https://github.com/max-miller1204/dots/releases}
 DOTS_RELEASE_MANIFEST_URL=${DOTS_RELEASE_MANIFEST_URL:-$DOTS_RELEASE_BASE_URL/latest/download/dots-release.txt}
 
@@ -159,7 +160,7 @@ dots_release_assert_store() {
   dots_file_assert_safe_parents "$DOTS_RELEASES_DIR/release" "$HOME"
 }
 
-dots_release_pointer_version() { # pointer_version <current|previous>
+_dots_release_pointer_version() {
   local pointer=$1 target version marker integrity prefix
 
   [[ $pointer == "$DOTS_RELEASE_CURRENT" || $pointer == "$DOTS_RELEASE_PREVIOUS" ]] || return 1
@@ -176,12 +177,72 @@ dots_release_pointer_version() { # pointer_version <current|previous>
   printf '%s\n' "$version"
 }
 
+dots_release_reconcile_pointers() {
+  local transaction=$DOTS_RELEASE_POINTER_TRANSACTION current previous target
+  local actual_current="-" actual_previous="-" desired_previous release_version
+  local -a lines=()
+
+  [[ -e $transaction || -L $transaction ]] || return 0
+  [[ -f $transaction && ! -L $transaction ]] || {
+    echo "Refusing unsafe dots release pointer transaction: $transaction" >&2
+    return 1
+  }
+  mapfile -t lines <"$transaction"
+  ((${#lines[@]} == 4)) && [[ ${lines[0]} == "dots-release-pointer-transaction-v1" &&
+    ${lines[1]} == current=* && ${lines[2]} == previous=* && ${lines[3]} == target=* ]] || {
+    echo "Invalid dots release pointer transaction: $transaction" >&2
+    return 1
+  }
+  current=${lines[1]#current=}
+  previous=${lines[2]#previous=}
+  target=${lines[3]#target=}
+  [[ $current == "-" ]] || dots_release_validate_version "$current" || return 1
+  [[ $previous == "-" ]] || dots_release_validate_version "$previous" || return 1
+  dots_release_validate_version "$target" || return 1
+  for release_version in "$current" "$previous" "$target"; do
+    [[ $release_version == "-" ]] && continue
+    dots_release_verify_installed "$DOTS_RELEASES_DIR/$release_version" "$release_version" || return 1
+  done
+
+  actual_current=$(_dots_release_pointer_version "$DOTS_RELEASE_CURRENT" 2>/dev/null) || {
+    [[ ! -e $DOTS_RELEASE_CURRENT && ! -L $DOTS_RELEASE_CURRENT ]] || return 1
+    actual_current="-"
+  }
+  actual_previous=$(_dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS" 2>/dev/null) || {
+    [[ ! -e $DOTS_RELEASE_PREVIOUS && ! -L $DOTS_RELEASE_PREVIOUS ]] || return 1
+    actual_previous="-"
+  }
+
+  desired_previous=$current
+  [[ $desired_previous != "-" ]] || desired_previous=$previous
+  if [[ $actual_current == "$target" && $actual_previous == "$desired_previous" ]]; then
+    dots_release_write_path "$DOTS_RELEASE_CURRENT" || return 1
+  else
+    if [[ $current == "-" ]]; then
+      dots_file_remove "$DOTS_RELEASE_CURRENT" discard "$DOTS_RELEASE_HOME" || return 1
+    else
+      dots_release_atomic_pointer "$DOTS_RELEASE_CURRENT" "$current" || return 1
+    fi
+    if [[ $previous == "-" ]]; then
+      dots_file_remove "$DOTS_RELEASE_PREVIOUS" discard "$DOTS_RELEASE_HOME" || return 1
+    else
+      dots_release_atomic_pointer "$DOTS_RELEASE_PREVIOUS" "$previous" || return 1
+    fi
+  fi
+  dots_file_remove "$transaction" discard "$DOTS_RELEASE_HOME"
+}
+
+dots_release_pointer_version() { # pointer_version <current|previous>
+  dots_release_reconcile_pointers || return 1
+  _dots_release_pointer_version "$1"
+}
+
 dots_release_atomic_pointer() { # atomic_pointer <current|previous> <version>
   local pointer=$1 version=$2 temp_dir temp
 
   dots_release_validate_version "$version" || return 1
   dots_release_assert_store || return 1
-  if [[ -e $pointer || -L $pointer ]] && ! dots_release_pointer_version "$pointer" >/dev/null 2>&1; then
+  if [[ -e $pointer || -L $pointer ]] && ! _dots_release_pointer_version "$pointer" >/dev/null 2>&1; then
     echo "Refusing unsafe dots release pointer: $pointer" >&2
     return 1
   fi
@@ -208,7 +269,7 @@ dots_release_atomic_pointer() { # atomic_pointer <current|previous> <version>
 }
 
 dots_release_activate() { # activate <version>
-  local version=$1 current="" marker
+  local version=$1 current="-" previous="-" transaction_source
 
   dots_release_validate_version "$version" || {
     echo "Invalid dots release version: $version" >&2
@@ -219,12 +280,31 @@ dots_release_activate() { # activate <version>
     return 1
   }
   dots_release_verify_installed "$DOTS_RELEASES_DIR/$version" "$version" || return 1
-  current=$(dots_release_pointer_version "$DOTS_RELEASE_CURRENT" 2>/dev/null) || true
-  if [[ -n $current && $current != "$version" ]]; then
+  dots_release_reconcile_pointers || return 1
+  current=$(_dots_release_pointer_version "$DOTS_RELEASE_CURRENT" 2>/dev/null) || current="-"
+  previous=$(_dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS" 2>/dev/null) || previous="-"
+  if [[ $current == "$version" ]]; then
+    dots_release_write_path "$DOTS_RELEASE_CURRENT"
+    return
+  fi
+  transaction_source=$(mktemp "${TMPDIR:-/tmp}/dots-pointer-transaction.XXXXXX") || return 1
+  printf 'dots-release-pointer-transaction-v1\ncurrent=%s\nprevious=%s\ntarget=%s\n' \
+    "$current" "$previous" "$version" >"$transaction_source"
+  if ! dots_file_replace "$transaction_source" "$DOTS_RELEASE_POINTER_TRANSACTION" discard "$DOTS_RELEASE_HOME"; then
+    rm -f "$transaction_source"
+    return 1
+  fi
+  rm -f "$transaction_source"
+  if [[ $current != "-" ]]; then
     dots_release_atomic_pointer "$DOTS_RELEASE_PREVIOUS" "$current" || return 1
   fi
+  [[ ${DOTS_RELEASE_TEST_FAIL_AT:-} != "after-previous" ]] || return 86
+  if [[ ${DOTS_RELEASE_TEST_CRASH_AT:-} == "after-previous" ]]; then kill -KILL "$$"; fi
   dots_release_atomic_pointer "$DOTS_RELEASE_CURRENT" "$version" || return 1
-  dots_release_write_path "$DOTS_RELEASE_CURRENT"
+  [[ ${DOTS_RELEASE_TEST_FAIL_AT:-} != "after-current" ]] || return 86
+  if [[ ${DOTS_RELEASE_TEST_CRASH_AT:-} == "after-current" ]]; then kill -KILL "$$"; fi
+  dots_release_write_path "$DOTS_RELEASE_CURRENT" || return 1
+  dots_file_remove "$DOTS_RELEASE_POINTER_TRANSACTION" discard "$DOTS_RELEASE_HOME"
 }
 
 dots_release_sha256() { # sha256 <file>
