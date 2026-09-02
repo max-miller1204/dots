@@ -2,7 +2,7 @@
 
 ## Recommended installation
 
-Dots supports macOS, Ubuntu, and WSL. Install `git` and `curl` first. On macOS, install [Homebrew](https://brew.sh) as well; dots uses it for `flock` and a modern Bash command runtime without changing the configured login shell. Broader Bash completion is an optional package described below.
+Dots supports macOS, Ubuntu, and WSL. Install `curl` first. On macOS, install [Homebrew](https://brew.sh) as well; dots uses it for `flock` and a modern Bash command runtime without changing the configured login shell. Broader Bash completion is an optional package described below.
 
 ### Optional Bash completion framework
 
@@ -72,20 +72,29 @@ curl https://mise.run | sh
 
 The installer places mise at `~/.local/bin/mise`. Dots can find that path even before the current shell reloads.
 
-Then clone the editable source and install the latest stable release:
+Then run the installer published with the latest GitHub release:
 
 ```bash
-git clone https://github.com/max-miller1204/dots.git ~/dotfiles
-~/dotfiles/bin/dots-install
+installer=$(mktemp)
+curl -fsSL https://github.com/max-miller1204/dots/releases/latest/download/install.sh -o "$installer" && bash "$installer"
+rm -f "$installer"
 exec "$SHELL" -l
 ```
 
-The source checkout is recorded separately, while the active runtime is installed under `~/.local/share/dots/releases/`. `dots install` is safe to rerun. It copies the released defaults, installs the mise tool manifest, configures the shell, and selects the default theme.
+The installer contains the release's exact version and SHA-256, verifies the downloaded archive before extraction, and activates it under `~/.local/share/dots/releases/`. It copies the released defaults, installs the mise tool manifest, configures the shell, and selects the default theme. Re-run the same command after a failed installation; completed steps are safe to converge again.
 
-Develop directly against the checkout only when needed:
+## Developer mode
+
+A Git checkout is not part of a normal installation. Clone one only to author configuration or test unreleased code:
 
 ```bash
+git clone https://github.com/max-miller1204/dots.git ~/dotfiles
 dots dev link ~/dotfiles
+```
+
+Return to the verified stable runtime without deleting the checkout:
+
+```bash
 dots dev unlink
 ```
 

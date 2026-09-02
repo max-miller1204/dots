@@ -428,7 +428,7 @@ dots_release_verify_installed() { # verify_installed <release-dir> <version>
 }
 
 dots_release_install_archive() { # install_archive <version> <archive> <sha256>
-  local version=$1 archive=$2 expected_sha=$3 actual_sha stage extracted final marker
+  local version=$1 archive=$2 expected_sha=$3 actual_sha stage extracted ready final marker
   local entry verbose_listing listing_line entry_type
 
   dots_release_validate_version "$version" || {
@@ -496,15 +496,33 @@ dots_release_install_archive() { # install_archive <version> <archive> <sha256>
     rm -rf "$stage"
     return 1
   fi
-  chmod -R a-w "$extracted"
-  chmod u+w "$extracted"
-  if ! mv "$extracted" "$final"; then
-    chmod -R u+w "$extracted" 2>/dev/null || true
+  ready=$(mktemp -d "$DOTS_RELEASES_DIR/.ready-$version.XXXXXX") || {
     rm -rf "$stage"
     return 1
+  }
+  if ! rmdir "$ready"; then
+    rm -rf "$ready" "$stage"
+    return 1
   fi
-  chmod a-w "$final"
-  rmdir "$stage"
+  if ! mv "$extracted" "$ready" || ! rmdir "$stage"; then
+    chmod -R u+w "$ready" "$stage" 2>/dev/null || true
+    rm -rf "$ready" "$stage"
+    return 1
+  fi
+  if ! chmod -R a-w "$ready"; then
+    chmod -R u+w "$ready" 2>/dev/null || true
+    rm -rf "$ready"
+    return 1
+  fi
+  if [[ ${DOTS_RELEASE_TEST_CRASH_AT:-} == "after-release-ready" ]]; then kill -KILL "$$"; fi
+  # BSD mv refuses to move a non-writable directory across parents. The
+  # immutable ready tree is now a sibling of its final path, so this is one
+  # same-parent atomic rename with no writable final-path window.
+  if ! mv "$ready" "$final"; then
+    chmod -R u+w "$ready" 2>/dev/null || true
+    rm -rf "$ready"
+    return 1
+  fi
 }
 
 dots_release_parse_manifest() { # parse_manifest <file>; sets DOTS_LATEST_*
@@ -543,7 +561,7 @@ dots_release_fetch_latest_manifest() {
     return 1
   }
   manifest=$(mktemp "${TMPDIR:-/tmp}/dots-release-manifest.XXXXXX") || return 1
-  if ! curl -fsSL --connect-timeout 10 "$DOTS_RELEASE_MANIFEST_URL" -o "$manifest"; then
+  if ! curl -fsSL --connect-timeout 10 --max-time 60 --retry 2 "$DOTS_RELEASE_MANIFEST_URL" -o "$manifest"; then
     rm -f "$manifest"
     return 1
   fi
@@ -561,9 +579,9 @@ dots_release_download() { # download <version> <archive-name> <sha256>; sets DOT
   dots_release_validate_version "$version" || return 1
   [[ $archive_name == "dots-$version.tar.gz" ]] || return 1
   [[ $sha256 =~ ^[0-9a-fA-F]{64}$ ]] || return 1
-  archive=$(mktemp "${TMPDIR:-/tmp}/dots-$version.XXXXXX.tar.gz") || return 1
+  archive=$(mktemp "${TMPDIR:-/tmp}/dots-$version.tar.gz.XXXXXX") || return 1
   url="$DOTS_RELEASE_BASE_URL/download/v$version/$archive_name"
-  if ! curl -fsSL --connect-timeout 10 "$url" -o "$archive"; then
+  if ! curl -fsSL --connect-timeout 10 --max-time 600 --retry 2 "$url" -o "$archive"; then
     rm -f "$archive"
     return 1
   fi
