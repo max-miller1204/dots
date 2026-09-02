@@ -18,7 +18,7 @@ returns to the stable `current` release.
 The same runtime runs on macOS, Ubuntu, and WSL; tools come from mise (manifest:
 `config/mise/config.toml`), never brew or apt. The system-level exceptions on
 macOS are Homebrew Bash as the dots command runtime and `flock` for locking.
-Dots leaves Apple's default Zsh login shell unchanged.
+Dots does not change the account's configured login shell.
 
 `$DOTS_PATH` identifies the active runtime. Its canonical path is stored as
 plain, non-executable data in `~/.config/dots/path`; the file must be a regular,

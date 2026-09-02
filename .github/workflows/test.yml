@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # macOS pins /bin/bash at 3.2 and ships no flock. Install the command
-      # runtime and lock dependency without changing the Zsh login shell.
+      # runtime and lock dependency without changing the account login shell.
       - name: Install Bash command runtime and flock
         if: runner.os == 'macOS'
         run: brew install bash flock

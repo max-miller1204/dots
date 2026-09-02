@@ -2,7 +2,7 @@
 
 ## Recommended installation
 
-Dots supports macOS, Ubuntu, and WSL. Install `git` and `curl` first. On macOS, install [Homebrew](https://brew.sh) as well; dots uses it for `flock` and a modern Bash command runtime while leaving Apple's default Zsh login shell unchanged. Broader Bash completion is an optional package described below.
+Dots supports macOS, Ubuntu, and WSL. Install `git` and `curl` first. On macOS, install [Homebrew](https://brew.sh) as well; dots uses it for `flock` and a modern Bash command runtime without changing the configured login shell. Broader Bash completion is an optional package described below.
 
 ### Optional Bash completion framework
 
@@ -41,8 +41,10 @@ Homebrew, and Linuxbrew. It also loads context-aware completion for nested
 ### Optional Bash login shell on macOS
 
 Dots uses Homebrew Bash to run its commands, but it neither registers Bash as a
-login shell nor changes the macOS account from Zsh. To opt into Bash for
-interactive sessions, register the Homebrew binary and select it explicitly:
+login shell nor changes the account's current login shell. A standard macOS
+account therefore remains on Zsh, while an existing custom shell is also
+preserved. To opt into Bash for interactive sessions, register the Homebrew
+binary and select it explicitly:
 
 ```bash
 brew install bash

@@ -13,7 +13,7 @@ This repo replicates omarchy's dotfiles architecture on macOS. Read
 - **Bash >= 4 is assumed; write bash 5 idioms** as omarchy does: `declare -A`,
   `mapfile`, `${var,,}`, `${var//pat/rep}` are all fine. `bin/dots` guards the
   version and points at the fix. On macOS, `bin/dots-install` bootstraps
-  Homebrew Bash for scripts but leaves `/bin/zsh` as the login shell.
+  Homebrew Bash for scripts without changing the account's login shell.
 - Scripts under `install/` are sourced and intentionally omit shebangs
 - **Scripts must run on macOS (BSD userland) and Ubuntu/WSL (GNU userland)** —
   bash is uniform now, but the userland is not: avoid flags that differ

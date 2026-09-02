@@ -4,9 +4,9 @@ if [[ $(uname -s) != "Darwin" ]]; then
   return 0 2>/dev/null || exit 0
 fi
 
-# Keep Apple's default /bin/zsh as the login shell. Dots bootstraps Homebrew
-# Bash separately as its command runtime; users who prefer an interactive
-# Bash login can opt in using the steps in docs/setup.md.
+# Do not change the account login shell. Dots bootstraps Homebrew Bash
+# separately as its command runtime; users who prefer an interactive Bash
+# login can opt in using the steps in docs/setup.md.
 
 # Add your `defaults write` tweaks here. Examples (all commented out on
 # purpose — enable the ones you actually want):

@@ -30,8 +30,8 @@ fi
 unset dots_path_file dots_path_value dots_path_count dots_path_line
 export DOTS_PATH
 
-# Homebrew (macOS): dots uses Bash as its command runtime while Zsh remains
-# the login shell. Homebrew's bin must precede system dirs so
+# Homebrew (macOS): dots uses Bash as its command runtime without changing the
+# account login shell. Homebrew's bin must precede system dirs so
 # `#!/usr/bin/env bash` resolves to modern Bash rather than 3.2. Support both
 # Apple Silicon's /opt/homebrew and Intel's /usr/local without treating Linux
 # /usr/local as Homebrew. GUI terminals may have reordered an existing entry

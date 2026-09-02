@@ -5,10 +5,10 @@
 #
 # Stable is the default. --developer installs directly from this checkout.
 
-# macOS starts with Bash 3.2 even though Zsh is the account login shell. The
-# installer must bootstrap its command runtime before it sources helpers that
-# use Bash 4+ features. This does not register Bash in /etc/shells or change
-# the user's login shell.
+# macOS ships Bash 3.2 and defaults accounts to Zsh. The installer must
+# bootstrap its command runtime before it sources helpers that use Bash 4+
+# features. This does not register Bash in /etc/shells or change the user's
+# login shell.
 if ((BASH_VERSINFO[0] < 4)); then
   if [[ $(uname -s) != "Darwin" ]]; then
     echo "dots requires Bash >= 4; this is Bash ${BASH_VERSION}." >&2
