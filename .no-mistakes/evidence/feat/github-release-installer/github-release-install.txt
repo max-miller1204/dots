@@ -1,0 +1,25 @@
+Command: SHELL=/bin/zsh /bin/bash dist/install.sh
+Downloading dots 1.1.0...
+Installing dots 1.1.0...
+
+=== dots install run: Wed Sep  2 19:33:14 EDT 2026 ===
+Installing dots from /private/var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T/dots-evidence.VuyqSx/home/.local/share/dots/current
+Recorded checkout location in ~/.config/dots/path
+Seeding mise config into ~/.config...
+Installing packages...
+Seeding configs into ~/.config...
+No macOS defaults applied (edit install/config/macos.sh to add your own).
+Git identity is not set. Edit config/git/config, then run:
+  dots refresh config git/config
+Theme set to tokyo-night.
+Generated files live in /private/var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T/dots-evidence.VuyqSx/home/.local/state/dots/current/theme — point your apps' configs there.
+
+Done. Open a new terminal (or run: exec "$SHELL" -l), then try: dots
+
+Observed installed command: dots 1.1.0 (stable)
+Recorded stable path: /private/var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T/dots-evidence.VuyqSx/home/.local/share/dots/current
+Contributor source path: absent
+Git availability during install: unavailable (all probes returned 127); installation still completed
+Login-shell change attempts: 0 (SHELL remained /bin/zsh)
+Transactional convergence marker: present
+Bootstrap runtime used: GNU bash, version 3.2.57(1)-release (arm64-apple-darwin25)
