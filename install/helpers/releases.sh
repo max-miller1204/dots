@@ -51,11 +51,19 @@ dots_release_read_one_line() { # read_one_line <regular-file>
 }
 
 dots_release_configured_path() {
-  dots_release_read_one_line "$(_dots_release_path_file)"
+  local configured
+
+  configured=$(dots_release_read_one_line "$(_dots_release_path_file)") || return 1
+  [[ $configured == /* && $configured != *$'\n'* && $configured != *:* ]] || return 1
+  printf '%s\n' "$configured"
 }
 
 dots_release_source_path() {
-  dots_release_read_one_line "$(_dots_release_source_file)"
+  local source_path
+
+  source_path=$(dots_release_read_one_line "$(_dots_release_source_file)") || return 1
+  [[ $source_path == /* && $source_path != *$'\n'* && $source_path != *:* ]] || return 1
+  printf '%s\n' "$source_path"
 }
 
 dots_release_is_stable_mode() {

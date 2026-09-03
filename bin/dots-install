@@ -84,7 +84,14 @@ fi
 # has been deleted. Repair that one broken authority before delegating to the
 # lock wrapper, which otherwise cannot resolve a runnable lock command. Invalid
 # or unsafe path files still fail closed instead of being overwritten.
-configured_runtime=$(dots_release_configured_path 2>/dev/null) || configured_runtime=""
+configured_path_file=$(_dots_release_path_file)
+configured_runtime=""
+if [[ -e $configured_path_file || -L $configured_path_file ]]; then
+  if ! configured_runtime=$(dots_release_configured_path 2>/dev/null); then
+    echo "Invalid dots runtime path file: $configured_path_file" >&2
+    exit 1
+  fi
+fi
 if [[ -n $configured_runtime && ! -d $configured_runtime ]]; then
   dots_release_write_path "$DOTS_PATH"
 fi

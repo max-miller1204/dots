@@ -210,6 +210,54 @@ fi
   fail "unsafe completion marker prevented runtime path repair"
 assertions=$((assertions + 3))
 
+# Repair installs fail closed rather than overwriting malformed runtime authority.
+for invalid_runtime in 'bad:path' 'relative/runtime'; do
+  invalid_path_home=$(mktemp -d "$SANDBOX/invalid-path-home.XXXXXX")
+  mkdir -p "$invalid_path_home/.config/dots"
+  printf '%s\n' "$invalid_runtime" >"$invalid_path_home/.config/dots/path"
+  if HOME="$invalid_path_home" PATH="$stub:$runtime_path" \
+    "$repo/bin/dots-install" --developer >/dev/null 2>&1; then
+    fail "repair install accepted malformed runtime path: $invalid_runtime"
+  fi
+  [[ $(<"$invalid_path_home/.config/dots/path") == "$invalid_runtime" ]] ||
+    fail "repair install overwrote malformed runtime path: $invalid_runtime"
+done
+assertions=$((assertions + 4))
+
+# Both serialized release-path readers enforce the same absolute, colon-free
+# contract independently of the installer entrypoint.
+for reader_case in 'path dots_release_configured_path' 'source-path dots_release_source_path'; do
+  read -r reader_file reader_function <<<"$reader_case"
+  for invalid_runtime in 'bad:path' 'relative/runtime'; do
+    invalid_reader_home=$(mktemp -d "$SANDBOX/invalid-reader-home.XXXXXX")
+    mkdir -p "$invalid_reader_home/.config/dots"
+    printf '%s\n' "$invalid_runtime" >"$invalid_reader_home/.config/dots/$reader_file"
+    if HOME="$invalid_reader_home" bash -c '
+      source "$1/install/helpers/files.sh"
+      source "$1/install/helpers/releases.sh"
+      "$2"
+    ' bash "$repo" "$reader_function" >/dev/null 2>&1; then
+      fail "$reader_function accepted malformed serialized path: $invalid_runtime"
+    fi
+  done
+done
+assertions=$((assertions + 4))
+
+locked_invalid_home="$SANDBOX/locked-invalid-home"
+mkdir -p "$locked_invalid_home/.config/dots" "$locked_invalid_home/.local/state/dots"
+printf '%s\n' 'bad:path' >"$locked_invalid_home/.config/dots/path"
+if HOME="$locked_invalid_home" PATH="$stub:$runtime_path" bash -c '
+  exec 9>>"$HOME/.local/state/dots/update.lock"
+  flock -n 9
+  export DOTS_UPDATE_LOCK_PID=$$
+  exec "$1" --developer
+' bash "$repo/bin/dots-install" >/dev/null 2>&1; then
+  fail "locked repair install accepted malformed runtime path"
+fi
+[[ $(<"$locked_invalid_home/.config/dots/path") == "bad:path" ]] ||
+  fail "locked repair install overwrote malformed runtime path"
+assertions=$((assertions + 2))
+
 # A checkout path that cannot be represented safely is rejected before setup.
 bad_repo="$SANDBOX/repo:invalid"
 cp -R "$repo" "$bad_repo"
