@@ -13,35 +13,20 @@
 
 set -eo pipefail
 
-SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
-DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
-if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
-  exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"
-fi
+source "${BASH_SOURCE[0]%/*}/../install/helpers/runtime.sh"
 source "$DOTS_PATH/install/helpers/files.sh"
 source "$DOTS_PATH/install/helpers/releases.sh"
 STATE_DIR="$HOME/.local/state/dots"
 dots_file_assert_safe_parents "$STATE_DIR/update.log" "$HOME"
 UPDATE_LOCK="${DOTS_UPDATE_LOCK:-$STATE_DIR/update.lock}"
 
-update_lock_fd_valid() {
-  { true >&9; } 2>/dev/null || return 1
-  command -v flock >/dev/null 2>&1 || return 1
-  dots_file_path_matches_fd "$UPDATE_LOCK" 9 >/dev/null 2>&1 || return 1
-
-  # Re-locking the inherited open file description succeeds. A forged fd on
-  # the real file either acquires the lock (making the run safe) or fails while
-  # another updater owns it.
-  flock -n 9
-}
-
 # The transcribed stage must inherit both the lock sentinel and the verified
 # locked fd. Code convergence may re-exec once with that proof; the pipeline
 # closes it before hooks, migrations, or tools can inherit it.
 transcribed=""
 continuation=""
-if [[ ${1:-} == "--transcribed" && -n ${DOTS_UPDATE_LOCK_PID:-} ]] && update_lock_fd_valid; then
+if [[ ${1:-} == "--transcribed" && -n ${DOTS_UPDATE_LOCK_PID:-} ]] &&
+  dots_lock_fd9_valid "$UPDATE_LOCK" "$HOME"; then
   transcribed=1
   shift
   if [[ ${1:-} == "--continue" ]]; then
@@ -59,7 +44,7 @@ if (($#)); then
 fi
 
 if [[ ! -d $DOTS_PATH ]]; then
-  echo "No dotfiles checkout at $DOTS_PATH" >&2
+  echo "No dots runtime at $DOTS_PATH" >&2
   exit 1
 fi
 
@@ -106,7 +91,7 @@ if [[ -z $transcribed ]]; then
   if [[ ${DOTS_UPDATE_LOCK_PID:-} != "$$" ]]; then
     exec "$SELF_DIR/dots-update-lock" "$SELF_DIR/dots-update"
   fi
-  if ! update_lock_fd_valid; then
+  if ! dots_lock_fd9_valid "$UPDATE_LOCK" "$HOME"; then
     echo "Inherited update lock proof is invalid; refusing to continue." >&2
     exit 1
   fi

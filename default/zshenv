@@ -8,9 +8,10 @@
 
 # Resolve plain runtime-path data before env-bootstrap itself is available.
 dots_bootstrap_path=""
-if [[ ( -e $HOME/.config/dots/path || -L $HOME/.config/dots/path ) &&
+if [[ -L $HOME/.config || -L $HOME/.config/dots ||
+      ( -e $HOME/.config/dots/path || -L $HOME/.config/dots/path ) &&
       ( -L $HOME/.config/dots/path || ! -f $HOME/.config/dots/path ) ]]; then
-  echo "Refusing non-regular checkout path file: $HOME/.config/dots/path" >&2
+  echo "Refusing unsafe dots runtime path hierarchy: $HOME/.config/dots/path" >&2
   return 1 2>/dev/null || exit 1
 fi
 if [[ -f $HOME/.config/dots/path ]]; then

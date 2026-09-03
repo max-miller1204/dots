@@ -25,15 +25,13 @@
 
 set -eo pipefail
 
-SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
-DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
-if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"; fi
+source "${BASH_SOURCE[0]%/*}/../install/helpers/runtime.sh"
 
 staging=${1:?Usage: dots-theme-set-templates <staged-theme-dir>}
 colors_file="$staging/colors.toml"
 
 [[ -f $colors_file ]] || exit 0
+source "$DOTS_PATH/install/helpers/theme-palette.sh"
 
 sedfile=$(mktemp "${TMPDIR:-/tmp}/dots-theme-rules.XXXXXX")
 trap 'rm -f "$sedfile"' EXIT
@@ -61,28 +59,36 @@ emit_rules() { # emit_rules <key> <value>
 
 selection_value=""
 bright_foreground_value=""
+has_selection=""
+has_bright_foreground=""
 has_selection_background=""
 has_selection_foreground=""
 
-key_re='^[[:space:]]*([A-Za-z0-9_]+)[[:space:]]*=[[:space:]]*"([^"]*)"'
-while IFS= read -r line || [[ -n $line ]]; do
-  [[ $line =~ $key_re ]] || continue
-  key=${BASH_REMATCH[1]}
-  val=${BASH_REMATCH[2]}
+# shellcheck disable=SC2329 # invoked by dots_theme_palette_parse
+palette_rule() { # palette_rule <key> <decoded-value>
+  local key=$1 val=$2
   emit_rules "$key" "$val" >>"$sedfile"
 
-  case "$key" in
-    selection) selection_value=$val ;;
-    bright_foreground) bright_foreground_value=$val ;;
+  case $key in
+    selection)
+      selection_value=$val
+      has_selection=1
+      ;;
+    bright_foreground)
+      bright_foreground_value=$val
+      has_bright_foreground=1
+      ;;
     selection_background) has_selection_background=1 ;;
     selection_foreground) has_selection_foreground=1 ;;
   esac
-done <"$colors_file"
+}
 
-if [[ -z $has_selection_background && -n $selection_value ]]; then
+dots_theme_palette_parse "$colors_file" palette_rule
+
+if [[ -z $has_selection_background && -n $has_selection && -n $selection_value ]]; then
   emit_rules selection_background "$selection_value" >>"$sedfile"
 fi
-if [[ -z $has_selection_foreground && -n $bright_foreground_value ]]; then
+if [[ -z $has_selection_foreground && -n $has_bright_foreground && -n $bright_foreground_value ]]; then
   emit_rules selection_foreground "$bright_foreground_value" >>"$sedfile"
 fi
 

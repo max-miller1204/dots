@@ -28,6 +28,10 @@ Versioned synchronizers in `bin/` connect generated themes to supported applicat
 - Pi and Claude receive stable generated theme payloads.
 - `obsidian.css` is available for an Obsidian CSS theme or snippet.
 
+The shipped btop config sets `save_config_on_exit = false` so an interactive
+session cannot silently rewrite the copied baseline. Edit the live config and
+import it explicitly when a btop preference should persist.
+
 Normal theme changes do not take over Pi or Claude preferences. Activate the generated theme once when wanted:
 
 ```bash
@@ -54,6 +58,19 @@ source trees may not contain symlinks, and generated output occupants must be
 regular files. Rendering fails before publication if a supported placeholder
 remains unresolved.
 
-Supported palette parsing covers quoted top-level values and derived selection foreground/background values. Omarchy mix, gradient, nested TOML, and remote-theme payload semantics are intentionally unsupported.
+Palette files use a strict TOML subset: blank lines and comments, plus unique
+top-level bare keys made of letters, numbers, and underscores assigned to
+double-quoted basic strings. Spaces and trailing comments are accepted. Quote,
+backslash, tab, and valid non-NUL Unicode scalar escapes are decoded.
+Basic-string escapes that produce line or other unsafe control characters are
+rejected because rendered palette values are single-line. Malformed
+assignments, duplicate keys, tables, dotted or quoted keys, multiline strings,
+and other TOML value types fail theme publication clearly.
+
+`selection_background` is derived from a non-empty `selection`, and
+`selection_foreground` from a non-empty `bright_foreground`, unless the
+corresponding derived key is explicitly present (including when explicitly
+empty). Omarchy mix, gradient, nested TOML, and remote-theme payload semantics
+are intentionally unsupported.
 
 Shipped palettes, templates, and portable defaults adapted from Omarchy retain its [`LICENSE.omarchy`](../LICENSE.omarchy).

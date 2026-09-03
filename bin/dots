@@ -17,13 +17,8 @@ fi
 
 set -o pipefail
 
-DOTS_BIN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-DOTS_PATH=$("$DOTS_BIN_DIR/dots-path-resolve") || exit 1
-DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd) || exit 1
-export DOTS_PATH
-if [[ $DOTS_BIN_DIR != "$DOTS_PATH/bin" ]]; then
-  exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"
-fi
+source "${BASH_SOURCE[0]%/*}/../install/helpers/runtime.sh"
+DOTS_BIN_DIR=$SELF_DIR
 DOTS_METADATA_SCAN_LIMIT=20
 source "$DOTS_PATH/install/helpers/metadata.sh"
 

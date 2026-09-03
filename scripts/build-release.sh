@@ -26,7 +26,8 @@ fi
 if ! git -C "$repo_root" rev-parse --verify HEAD >/dev/null 2>&1 ||
   ! git -C "$repo_root" cat-file -e HEAD:version 2>/dev/null ||
   ! git -C "$repo_root" cat-file -e HEAD:scripts/build-installer.sh 2>/dev/null ||
-  ! git -C "$repo_root" cat-file -e HEAD:scripts/install.sh.tpl 2>/dev/null; then
+  ! git -C "$repo_root" cat-file -e HEAD:scripts/install.sh.tpl 2>/dev/null ||
+  ! git -C "$repo_root" cat-file -e HEAD:install/helpers/archive.sh 2>/dev/null; then
   echo "Release artifacts must be built from a Git commit containing version and installer sources." >&2
   exit 1
 fi
@@ -71,12 +72,13 @@ COPYFILE_DISABLE=1 git -C "$repo_root" archive \
   HEAD \
   -- "${payload[@]}" | gzip -n >"$temporary_archive"
 
-if ! dots_archive_regular_entries_only "$temporary_archive"; then
-  if [[ $DOTS_ARCHIVE_VALIDATION_ERROR == "unreadable" ]]; then
-    echo "Smoke test failed: release archive cannot be listed." >&2
-  else
-    echo "Smoke test failed: release archive contains a link or special entry." >&2
-  fi
+if ! dots_archive_validate "$temporary_archive" "$archive_root"; then
+  case "$DOTS_ARCHIVE_VALIDATION_ERROR" in
+    unreadable) echo "Smoke test failed: release archive cannot be listed." >&2 ;;
+    special-entry) echo "Smoke test failed: release archive contains a link or special entry." >&2 ;;
+    missing-root) echo "Smoke test failed: release archive is empty." >&2 ;;
+    unsafe-path) echo "Smoke test failed: unsafe archive path: $DOTS_ARCHIVE_VALIDATION_ENTRY" >&2 ;;
+  esac
   exit 1
 fi
 
@@ -130,9 +132,12 @@ fi
 archive_sha=$(awk -v name="$archive_name" '$2 == name || $2 == "*" name { print $1; exit }' "$checksum")
 committed_installer_renderer="$smoke_dir/build-installer.sh"
 committed_installer_template="$smoke_dir/install.sh.tpl"
+committed_archive_helper="$smoke_dir/archive.sh"
 git -C "$repo_root" show HEAD:scripts/build-installer.sh >"$committed_installer_renderer"
 git -C "$repo_root" show HEAD:scripts/install.sh.tpl >"$committed_installer_template"
+git -C "$repo_root" show HEAD:install/helpers/archive.sh >"$committed_archive_helper"
 DOTS_INSTALLER_TEMPLATE="$committed_installer_template" \
+  DOTS_ARCHIVE_HELPER="$committed_archive_helper" \
   "$BASH" "$committed_installer_renderer" "$version" "$archive_name" "$archive_sha" "$installer"
 if command -v sha256sum >/dev/null 2>&1; then
   (cd -- "$output_dir" && sha256sum install.sh >>SHA256SUMS)

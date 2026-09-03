@@ -20,12 +20,7 @@ if (($# < 1)); then
   exit 1
 fi
 
-SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
-DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
-if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
-  exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"
-fi
+source "${BASH_SOURCE[0]%/*}/../install/helpers/runtime.sh"
 source "$DOTS_PATH/install/helpers/files.sh"
 if ! command -v flock >/dev/null 2>&1; then
   source "$DOTS_PATH/install/config/flock.sh"
@@ -33,25 +28,7 @@ fi
 "$SELF_DIR/dots-ensure-flock"
 
 LOCK="${DOTS_UPDATE_LOCK:-$HOME/.local/state/dots/update.lock}"
-dots_file_assert_safe_parents "$LOCK" "$HOME"
-mkdir -p "${LOCK%/*}"
-dots_file_assert_safe_parents "$LOCK" "$HOME"
-if [[ -L $LOCK || ( -e $LOCK && ! -f $LOCK ) ]]; then
-  echo "Refusing unsafe update lock path: $LOCK" >&2
-  exit 1
-fi
-
-# Append mode does not alter a path that is swapped during open. Validate the
-# opened inode against the path before locking or writing through the fd.
-exec 9>>"$LOCK"
-if [[ -L $LOCK || ! -f $LOCK ]]; then
-  echo "Update lock path changed during open: $LOCK" >&2
-  exit 1
-fi
-if ! dots_file_path_matches_fd "$LOCK" 9; then
-  echo "Update lock path changed during open: $LOCK" >&2
-  exit 1
-fi
+dots_lock_open_fd9 "$LOCK" Update
 
 # -E gives contention its own exit code, so a real flock(2) failure (an
 # unsupported filesystem, say) is not misreported as a running update.

@@ -23,8 +23,9 @@ Dots does not change the account's configured login shell.
 `$DOTS_PATH` identifies the active runtime. Its canonical path is stored as
 plain, non-executable data in `~/.config/dots/path`; the optional editable
 checkout uses the same format in `~/.config/dots/source-path`. Both files must
-be regular, non-symlink files containing exactly one non-empty absolute path,
-and paths containing a newline or colon are rejected. Stable mode stores
+be regular, non-symlink files beneath non-symlinked HOME directories and
+contain exactly one non-empty absolute path; paths containing a newline or
+colon are rejected. Stable mode stores
 `~/.local/share/dots/current`; developer mode stores the checkout path. Shell
 startup and direct commands resolve the same authority, and commands reached
 through an inactive release or checkout delegate before mutating state.
@@ -63,6 +64,7 @@ default/zsh/site-functions →  added to interactive Zsh fpath (native completio
 default/themed/*.tpl       →  rendered into the active theme
 install/**                 →  run by dots-install
 migrations/*.sh            →  run by dots-migrate            (markers in state dir)
+migrations/fixtures/<id>/  →  exact historical inputs used by one migration
 themes/<name>/colors.toml  →  staged + rendered by dots-theme-set
 ```
 

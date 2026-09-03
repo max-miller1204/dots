@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+
+# dots:summary=Remove old verified releases while preserving rollback
+# dots:args=[--force]
+# dots:examples=dots version prune;;dots version prune --force
+
+set -eo pipefail
+
+source "${BASH_SOURCE[0]%/*}/../install/helpers/runtime.sh"
+source "$DOTS_PATH/install/helpers/files.sh"
+source "$DOTS_PATH/install/helpers/releases.sh"
+
+force=""
+case "${1:-}" in
+  "") ;;
+  --force) force=1 ;;
+  *)
+    echo "Usage: dots version prune [--force]" >&2
+    exit 1
+    ;;
+esac
+(($# <= 1)) || {
+  echo "Usage: dots version prune [--force]" >&2
+  exit 1
+}
+if ! dots_release_lock_fd_valid; then
+  exec "$SELF_DIR/dots-update-lock" "$0" "$@"
+fi
+
+if [[ -z $force ]]; then
+  printf 'Remove old verified dots releases (preserving current and previous)? [y/N] '
+  answer=""
+  IFS= read -r answer || true
+  case "$answer" in
+    y | Y | yes | YES | Yes) ;;
+    *)
+      echo "Prune cancelled."
+      exit 1
+      ;;
+  esac
+fi
+
+dots_release_prune

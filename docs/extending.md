@@ -8,7 +8,10 @@ Use a migration for a one-time change that existing installations need:
 $EDITOR "migrations/$(date +%s).sh"
 ```
 
-Migrations must be idempotent. `dots migrate` serializes execution and records successful completion under `~/.local/state/dots/migrations/`. `dots update` runs pending migrations automatically. A fresh installation already contains the current repository state, so it marks all shipped migrations complete.
+Migrations must be idempotent. `dots migrate` serializes execution and records
+successful completion under `~/.local/state/dots/migrations/`. `dots update`
+runs pending migrations automatically. A fresh installation already contains
+the current repository state, so it marks all shipped migrations complete.
 
 If a migration fails, dots leaves it pending, continues with later migrations,
 and returns the first failure status after the pass. A later run retries every
@@ -26,7 +29,8 @@ dots migrate
 marker state is unsafe or corrupt. Completion markers are empty regular files;
 nonempty files, symlinks, and other occupants are refused.
 
-If a migration changes something already loaded, such as shell configuration, create a restart marker:
+If a migration changes something already loaded, such as shell configuration,
+create a restart marker:
 
 ```bash
 touch ~/.local/state/dots/restart-shell-required
@@ -49,6 +53,15 @@ dots hook install post-update ~/my-update-hook
 dots hook post-update
 ```
 
-Sample hooks ship under [`config/dots/hooks/`](../config/dots/hooks/). Remove the `.sample` suffix in the live config tree to activate one.
+Sample hooks ship under [`config/dots/hooks/`](../config/dots/hooks/). Remove
+the `.sample` suffix in the live config tree to activate one.
 
-Hook installation accepts lowercase hyphenated event names and rejects symlinked destination parents. Built-in application behavior belongs in versioned scripts under `bin/`; hooks are for user-owned extensions.
+Hook installation accepts lowercase hyphenated event names and rejects
+symlinked destination parents. Matching Omarchy Quattro, the runner follows
+manually created symlinks for both an event file and its `.d` directory. This
+lets hooks remain in another repository, but it also means changes or newly
+added files at the symlink target change what Dots executes. Only link to
+locations you trust.
+
+Built-in application behavior belongs in versioned scripts under `bin/`; hooks
+are for user-owned extensions.

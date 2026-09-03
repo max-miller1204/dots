@@ -2,7 +2,7 @@
 
 [[ -o interactive ]] || return 0
 
-# Discover completions installed with the checkout, package-manager prefixes,
+# Discover completions installed with the active dots runtime, package-manager prefixes,
 # and Debian/Ubuntu's vendor-completions convention.
 dots_completion_paths=("$DOTS_PATH/default/zsh/site-functions")
 for dots_bin_dir in ${(s.:.)PATH}; do

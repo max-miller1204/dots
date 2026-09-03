@@ -5,7 +5,13 @@
 
 set -eo pipefail
 
+self_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+source "$self_dir/../install/helpers/files.sh"
 path_file="$HOME/.config/dots/path"
+if ! dots_file_assert_safe_parents "$path_file" "$HOME" >/dev/null 2>&1; then
+  echo "Refusing unsafe dots runtime path hierarchy: $path_file" >&2
+  exit 1
+fi
 if [[ ( -e $path_file || -L $path_file ) && ( -L $path_file || ! -f $path_file ) ]]; then
   echo "Refusing non-regular dots runtime path file: $path_file" >&2
   exit 1
@@ -25,7 +31,6 @@ elif [[ -n ${DOTS_PATH:-} ]]; then
   fi
   printf '%s\n' "$DOTS_PATH"
 else
-  self_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
   cd -- "$self_dir/.."
   pwd
 fi

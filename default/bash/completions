@@ -15,9 +15,9 @@ _dots_complete() {
     consumed=()
   fi
 
-  while IFS= read -r candidate; do
+  while IFS= read -r -d '' candidate; do
     [[ $candidate == "$cur"* ]] && COMPREPLY+=("$candidate")
-  done < <("$helper" "${consumed[@]}")
+  done < <("$helper" --null "${consumed[@]}")
 }
 
 complete -o bashdefault -o default -F _dots_complete dots

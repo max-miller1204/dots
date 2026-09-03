@@ -13,6 +13,13 @@ DOTS_BIN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd) || exit 0
 DOTS_PATH=${DOTS_PATH:-${DOTS_BIN_DIR%/bin}}
 DOTS_METADATA_SCAN_LIMIT=20
 source "$DOTS_PATH/install/helpers/metadata.sh"
+source "$DOTS_PATH/install/helpers/files.sh"
+
+DOTS_COMPLETION_NUL=""
+if [[ ${1:-} == "--null" ]]; then
+  DOTS_COMPLETION_NUL=1
+  shift
+fi
 
 declare -A emitted=()
 
@@ -23,7 +30,11 @@ visible_command() { # visible_command <file>
 emit() { # emit <candidate>
   [[ -n $1 && -z ${emitted[$1]:-} ]] || return 0
   emitted[$1]=1
-  printf '%s\n' "$1"
+  if [[ -n $DOTS_COMPLETION_NUL ]]; then
+    printf '%s\0' "$1"
+  else
+    printf '%s\n' "$1"
+  fi
 }
 
 has_visible_prefix() { # has_visible_prefix <dots-command-prefix>
@@ -92,20 +103,16 @@ emit_argument_candidates() { # emit_argument_candidates <file> <argument-count>
       done
       ;;
     dots-refresh-config)
-      while IFS= read -r item; do
-        value=${item#"$DOTS_PATH/config/"}
-        if [[ $value != *..* ]]; then
-          emit "$value"
-        fi
-      done < <(find "$DOTS_PATH/config" -type f 2>/dev/null)
+      while IFS= read -r -d '' item; do
+        value=${item#./}
+        [[ $value == *..* ]] || emit "$value"
+      done < <(dots_config_find_files "$DOTS_PATH/config")
       ;;
     dots-config-import)
-      while IFS= read -r item; do
-        value=${item#"$HOME/.config/"}
-        if [[ $value != *..* ]]; then
-          emit "$value"
-        fi
-      done < <(find "$HOME/.config" -type f 2>/dev/null)
+      while IFS= read -r -d '' item; do
+        value=${item#./}
+        [[ $value == *..* ]] || emit "$value"
+      done < <(dots_config_find_files "$HOME/.config")
       ;;
   esac
 }

@@ -1,0 +1,24 @@
+# This file is yours. It is seeded from ~/dotfiles/default/zshrc at install
+# (with a backup of any previous version) and never touched by `dots update`.
+# `dots reinstall configs` resets it to the shipped default.
+
+. "${DOTS_PATH:-$HOME/dotfiles}/default/bash/env-bootstrap"
+
+# These defaults intentionally use syntax shared by Bash 5 and Zsh.
+. "$DOTS_PATH/default/bash/shell"
+. "$DOTS_PATH/default/bash/aliases"
+. "$DOTS_PATH/default/bash/functions"
+. "$DOTS_PATH/default/bash/init"
+
+# Zsh uses ZLE rather than Readline, so mirror the useful inputrc bindings.
+if [[ -o interactive ]]; then
+  bindkey -e
+  autoload -Uz up-line-or-beginning-search down-line-or-beginning-search
+  zle -N up-line-or-beginning-search
+  zle -N down-line-or-beginning-search
+  bindkey '^[[A' up-line-or-beginning-search
+  bindkey '^[[B' down-line-or-beginning-search
+  bindkey '^[[Z' reverse-menu-complete
+  zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
+  zstyle ':completion:*' menu select
+fi

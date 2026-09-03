@@ -33,12 +33,30 @@ if [[ -z $output || -d $output ]]; then
 fi
 
 template_path=${DOTS_INSTALLER_TEMPLATE:-"$ROOT/scripts/install.sh.tpl"}
+archive_helper_path=${DOTS_ARCHIVE_HELPER:-"$ROOT/install/helpers/archive.sh"}
 [[ -f $template_path && ! -L $template_path ]] || {
   echo "Installer template is not a regular file: $template_path" >&2
   exit 1
 }
+[[ -f $archive_helper_path && ! -L $archive_helper_path ]] || {
+  echo "Archive helper is not a regular file: $archive_helper_path" >&2
+  exit 1
+}
+validator=$(awk '
+  /^# DOTS_ARCHIVE_VALIDATOR_BEGIN$/ { capture = 1; next }
+  /^# DOTS_ARCHIVE_VALIDATOR_END$/ { capture = 0; found = 1; next }
+  capture { print }
+  END { if (!found) exit 1 }
+' "$archive_helper_path") || {
+  echo "Archive helper contains no embeddable validator: $archive_helper_path" >&2
+  exit 1
+}
+[[ $validator == *"dots_archive_validate()"* ]] || {
+  echo "Archive helper contains an invalid embeddable validator: $archive_helper_path" >&2
+  exit 1
+}
 template=$(<"$template_path")
-for placeholder in @DOTS_RELEASE_VERSION@ @DOTS_RELEASE_ARCHIVE@ @DOTS_RELEASE_SHA256@; do
+for placeholder in @DOTS_RELEASE_VERSION@ @DOTS_RELEASE_ARCHIVE@ @DOTS_RELEASE_SHA256@ @DOTS_ARCHIVE_VALIDATOR@; do
   [[ $template == *"$placeholder"* ]] || {
     echo "Installer template is missing $placeholder." >&2
     exit 1
@@ -47,5 +65,11 @@ done
 template=${template//@DOTS_RELEASE_VERSION@/$version}
 template=${template//@DOTS_RELEASE_ARCHIVE@/$archive}
 template=${template//@DOTS_RELEASE_SHA256@/${sha,,}}
-printf '%s\n' "$template" >"$output"
+while IFS= read -r line || [[ -n $line ]]; do
+  if [[ $line == "@DOTS_ARCHIVE_VALIDATOR@" ]]; then
+    printf '%s\n' "$validator"
+  else
+    printf '%s\n' "$line"
+  fi
+done <<<"$template" >"$output"
 chmod +x "$output"

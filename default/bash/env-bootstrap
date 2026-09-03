@@ -8,8 +8,9 @@
 # installer rejects newlines, so one read recovers the path exactly, including
 # spaces, quotes, backticks, and dollar signs.
 dots_path_file="$HOME/.config/dots/path"
-if [[ ( -e $dots_path_file || -L $dots_path_file ) && ( -L $dots_path_file || ! -f $dots_path_file ) ]]; then
-  echo "Refusing non-regular checkout path file: $dots_path_file" >&2
+if [[ -L $HOME/.config || -L $HOME/.config/dots ||
+      ( -e $dots_path_file || -L $dots_path_file ) && ( -L $dots_path_file || ! -f $dots_path_file ) ]]; then
+  echo "Refusing unsafe dots runtime path hierarchy: $dots_path_file" >&2
   return 1 2>/dev/null || exit 1
 fi
 if [[ -f $dots_path_file ]]; then

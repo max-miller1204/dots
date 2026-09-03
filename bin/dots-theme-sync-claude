@@ -5,53 +5,8 @@
 
 set -euo pipefail
 
-SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
-DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
-if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"; fi
+source "${BASH_SOURCE[0]%/*}/../install/helpers/runtime.sh"
 source "$DOTS_PATH/install/helpers/theme-sync.sh"
-activate=false
-case ${1:-} in
-  "") ;;
-  --activate) activate=true ;;
-  *)
-    echo "Usage: dots-theme-sync-claude [--activate]" >&2
-    exit 1
-    ;;
-esac
-(( $# <= 1 )) || {
-  echo "Usage: dots-theme-sync-claude [--activate]" >&2
-  exit 1
-}
-
 config_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-settings_path="$config_dir/settings.json"
-dots_theme_sync_payload \
-  claude.json "Claude theme" "$config_dir" "$config_dir/themes/dots.json" "$activate"
-
-$activate || exit 0
-
-tmp_settings=""
-cleanup() {
-  [[ -z $tmp_settings ]] || rm -f "$tmp_settings"
-}
-trap cleanup EXIT
-
-if ! "$DOTS_PATH/bin/dots-cmd-present" jq; then
-  echo "Cannot activate Claude theme: jq is not installed" >&2
-  exit 1
-fi
-
-if [[ -L $settings_path ]]; then
-  echo "Refusing Claude settings symlink: $settings_path" >&2
-  exit 1
-fi
-tmp_settings=$(mktemp "${TMPDIR:-/tmp}/dots-claude-settings.XXXXXX")
-if [[ -f $settings_path ]]; then
-  jq '.theme = "custom:dots"' "$settings_path" >"$tmp_settings"
-else
-  jq -n '{theme: "custom:dots"}' >"$tmp_settings"
-fi
-dots_file_replace "$tmp_settings" "$settings_path" discard
-rm -f "$tmp_settings"
-tmp_settings=""
+dots_theme_sync_json_app dots-theme-sync-claude Claude "$config_dir" \
+  claude.json "$config_dir/themes/dots.json" custom:dots "$@"
