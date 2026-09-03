@@ -224,6 +224,21 @@ for invalid_runtime in 'bad:path' 'relative/runtime'; do
 done
 assertions=$((assertions + 4))
 
+locked_invalid_home="$SANDBOX/locked-invalid-home"
+mkdir -p "$locked_invalid_home/.config/dots" "$locked_invalid_home/.local/state/dots"
+printf '%s\n' 'bad:path' >"$locked_invalid_home/.config/dots/path"
+if HOME="$locked_invalid_home" PATH="$stub:$runtime_path" bash -c '
+  exec 9>>"$HOME/.local/state/dots/update.lock"
+  flock -n 9
+  export DOTS_UPDATE_LOCK_PID=$$
+  exec "$1" --developer
+' bash "$repo/bin/dots-install" >/dev/null 2>&1; then
+  fail "locked repair install accepted malformed runtime path"
+fi
+[[ $(<"$locked_invalid_home/.config/dots/path") == "bad:path" ]] ||
+  fail "locked repair install overwrote malformed runtime path"
+assertions=$((assertions + 2))
+
 # A checkout path that cannot be represented safely is rejected before setup.
 bad_repo="$SANDBOX/repo:invalid"
 cp -R "$repo" "$bad_repo"
