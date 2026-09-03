@@ -24,9 +24,9 @@ dots-update
   ├─ converge dots runtime
   │    ├─ stable: verify, stage, and atomically activate the latest release
   │    └─ developer: run git pull --ff-only only in a clean checkout
+  ├─ dots-migrate                      run pending migrations
   ├─ mise install and upgrade          synchronize tools with the manifest
   ├─ mise self-update                  update the standalone mise binary
-  ├─ dots-migrate                      run pending migrations
   ├─ dots-hook post-update             run user hooks and aggregate failures
   ├─ dots-update-analyze-logs          report known failure signatures
   └─ dots-update-restart               report restart-*-required markers
@@ -34,7 +34,7 @@ dots-update
 
 The command exits with status `0` only if each convergence stage succeeds. A
 stable release download or verification failure stops the pipeline before the
-tool and migration stages. Git, mise, or post-update hook failures cause the
+migration and tool stages. Git, mise, or post-update hook failures cause the
 message `Update incomplete.` and exit status `2`. If migrations fail, the
 command returns the first migration failure status.
 

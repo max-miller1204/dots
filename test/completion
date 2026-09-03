@@ -127,8 +127,8 @@ PATH="$completion_prefix/bin:/usr/bin:/bin" DOTS_PATH="$ROOT" TERM=dumb \
   bash "$ROOT/default/bashrc" || fail "interactive Bash did not load completion framework and dots adapter"
 assertions=$((assertions + 1))
 
-# Verify that Bash loads the mise GitHub release before a release in a PATH
-# prefix. Also verify that MISE_DATA_DIR can specify a different data directory.
+# Verify that Bash loads the mise GitHub release when a system framework is
+# already loaded. Also verify that MISE_DATA_DIR specifies the data directory.
 mise_data_dir="$SANDBOX/mise-data"
 mise_completion_dir="$mise_data_dir/installs/github-scop-bash-completion/latest"
 mkdir -p "$mise_completion_dir"
@@ -138,7 +138,9 @@ _mise_completion_loader() { :; }
 EOF
 MISE_DATA_DIR="$mise_data_dir" PATH="$completion_prefix/bin:/usr/bin:/bin" \
   DOTS_PATH="$ROOT" TERM=dumb "$bash_bin" --noprofile --norc -ic \
-  'source "$1"; [[ ${BASH_COMPLETION_VERSINFO[*]} == "2 100" ]];
+  'BASH_COMPLETION_VERSINFO=(2 99); _system_completion_loader() { :; };
+    source "$1"; [[ ${BASH_COMPLETION_VERSINFO[*]} == "2 100" ]];
+    declare -F _system_completion_loader >/dev/null;
     declare -F _mise_completion_loader >/dev/null;
     declare -F _dots_complete >/dev/null; complete -p dots >/dev/null' \
   bash "$ROOT/default/bashrc" || fail "interactive Bash did not load the mise completion framework first"

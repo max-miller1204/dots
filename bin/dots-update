@@ -245,7 +245,12 @@ fi
 # mise, migrations, hooks, and any daemons they launch cannot retain it.
 exec 9>&-
 
-# 2. Packages: install anything newly pinned in the manifest, then upgrade.
+# 2. Migrations can add tools to the live manifest before tool convergence.
+# A migration failure must not skip later reporting.
+migrate_rc=0
+"$SELF_DIR/dots-migrate" || migrate_rc=$?
+
+# 3. Packages: install anything newly pinned in the manifest, then upgrade.
 if command -v mise >/dev/null 2>&1; then
   echo "Syncing mise tools..."
   mise install || degraded_steps+=("mise install")
@@ -256,17 +261,14 @@ else
   degraded_steps+=("mise unavailable")
 fi
 
-# 3. Migrations, then the post-update hook: same order as omarchy update.
-# A migration failure must not skip the analyzer and restart report below.
-migrate_rc=0
-"$SELF_DIR/dots-migrate" || migrate_rc=$?
+# 4. Run the post-update hook only after successful migrations.
 if ((migrate_rc == 0)); then
   "$SELF_DIR/dots-hook" post-update || degraded_steps+=("post-update hook")
 else
   echo "Migrations failed (exit $migrate_rc); skipping the post-update hook."
 fi
 
-# 4. Point at problems buried in the transcript, then report restarts. These
+# 5. Point at problems buried in the transcript, then report restarts. These
 # reporting failures degrade the run but still publish terminal status.
 "$SELF_DIR/dots-update-analyze-logs" "$LOG_FILE" || degraded_steps+=("log analysis")
 "$SELF_DIR/dots-update-restart" || degraded_steps+=("restart reporting")
