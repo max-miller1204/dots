@@ -425,7 +425,15 @@ printf 'settings = "shadow"\n[settings.child]\nvalue = "0s"\n' >"$scalar_parent"
 if awk -f "$ROOT/test/toml-normalize.awk" "$scalar_parent" >/dev/null 2>&1; then
   fail "TOML normalizer accepted a table beneath a scalar"
 fi
-assertions=$((assertions + 6))
+for malformed_number in 1_ 1__2 01; do
+  malformed_number_file="$SANDBOX/malformed-number-$malformed_number.toml"
+  printf '[settings]\nminimum_release_age = "0s"\n[tools]\nbad = %s\n' "$malformed_number" \
+    >"$malformed_number_file"
+  if awk -f "$ROOT/test/toml-normalize.awk" "$malformed_number_file" >/dev/null 2>&1; then
+    fail "TOML normalizer accepted malformed number: $malformed_number"
+  fi
+done
+assertions=$((assertions + 9))
 
 # --- free-space guard
 DOTS_UPDATE_MIN_FREE_KB=1 "$ROOT/bin/dots-update-requires-free-space" ||

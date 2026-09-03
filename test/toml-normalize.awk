@@ -99,8 +99,6 @@ function normalize_scalar(path, value, inline_parent) {
     record("basic-string", path, substr(value, 2, length(value) - 2), inline_parent)
   } else if (value == "true" || value == "false") {
     record("boolean", path, value, inline_parent)
-  } else if (value ~ /^[-+]?[0-9][0-9_]*$/) {
-    record("integer", path, value, inline_parent)
   } else {
     fail("unsupported value for " path " on line " NR)
   }
