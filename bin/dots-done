@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # dots:summary=Check or mark completed dots setup tasks
-# dots:args=<check|mark|ensure> <name>
+# dots:args=<check|mark> <name>
 # dots:hidden=true
 
 set -euo pipefail
@@ -10,12 +10,12 @@ SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
 if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
-  exec "$DOTS_PATH/bin/dots-done" "$@"
+  exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"
 fi
 source "$DOTS_PATH/install/helpers/files.sh"
 
 if (( $# != 2 )); then
-  echo "Usage: dots-done <check|mark|ensure> <name>" >&2
+  echo "Usage: dots-done <check|mark> <name>" >&2
   exit 1
 fi
 
@@ -44,14 +44,8 @@ case "$action" in
     trap 'rm -f "$empty_marker"' EXIT
     dots_file_replace "$empty_marker" "$marker" discard
     ;;
-  ensure)
-    mkdir -p "$done_dir"
-    dots_file_assert_safe_parents "$marker" "$HOME"
-    [[ ! -L $marker ]] || exit 1
-    (set -o noclobber; : >"$marker") 2>/dev/null
-    ;;
   *)
-    echo "Usage: dots-done <check|mark|ensure> <name>" >&2
+    echo "Usage: dots-done <check|mark> <name>" >&2
     exit 1
     ;;
 esac

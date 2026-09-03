@@ -71,8 +71,9 @@ excludes_line "$import_values" completion-test/invalid..name "rejected config pa
 # A checkout path containing spaces exercises arbitrary nested commands, enum
 # metadata, options, and hidden filtering without changing the real bin tree.
 fixture_repo="$SANDBOX/completion repo"
-mkdir -p "$fixture_repo/bin" "$fixture_repo/themes/repo-theme"
+mkdir -p "$fixture_repo/bin" "$fixture_repo/install/helpers" "$fixture_repo/themes/repo-theme"
 cp "$helper" "$fixture_repo/bin/dots-completion-candidates"
+cp "$ROOT/install/helpers/metadata.sh" "$fixture_repo/install/helpers/metadata.sh"
 cat >"$fixture_repo/bin/dots-alpha" <<'EOF'
 #!/usr/bin/env bash
 # dots:args=<one|two> [--force]
@@ -107,7 +108,8 @@ PATH="$completion_prefix/bin:/usr/bin:/bin" DOTS_PATH="$ROOT" TERM=dumb \
   "$bash_bin" --noprofile --norc -ic \
   'source "$1"; declare -F _completion_loader >/dev/null;
     declare -F _dots_complete >/dev/null; complete -p dots >/dev/null;
-    ((BASH_VERSINFO[0] < 5)) || [[ $(complete -p -I) == *"dots-*"* ]]' \
+    ((BASH_VERSINFO[0] < 5)) ||
+      [[ $(complete -p -I) == *"-o bashdefault -o default"*"dots-*"* ]]' \
   bash "$ROOT/default/bashrc" || fail "interactive Bash did not load completion framework and dots adapter"
 assertions=$((assertions + 1))
 

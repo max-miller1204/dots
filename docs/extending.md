@@ -17,6 +17,10 @@ dots migrate --pending
 dots migrate
 ```
 
+`--pending` is a nonblocking status check: it exits `0` and lists pending files,
+`1` when none are pending, and `2` when another migration owns the lock or the
+marker state is unsafe.
+
 If a migration changes something already loaded, such as shell configuration, create a restart marker:
 
 ```bash
@@ -31,7 +35,7 @@ User hook scripts live under `~/.config/dots/hooks/<event>.d/`. Supported events
 
 - `post-install`
 - `post-update`
-- `theme-set` — receives the selected theme name as `$1`
+- `theme-set`: receives the selected theme name as `$1`
 
 Install a script with:
 

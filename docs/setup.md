@@ -64,6 +64,8 @@ complete -p dots
 
 Switch back to the macOS default at any time with `chsh -s /bin/zsh`.
 
+### Install mise and dots
+
 Use mise's official standalone release on every platform:
 
 ```bash
@@ -81,7 +83,22 @@ rm -f "$installer"
 exec "$SHELL" -l
 ```
 
-The installer contains the release's exact version and SHA-256, verifies the downloaded archive before extraction, and activates it under `~/.local/share/dots/releases/`. It copies the released defaults, installs the mise tool manifest, configures the shell, and selects the default theme. Re-run the same command after a failed installation; completed steps are safe to converge again.
+The installer contains the release's exact version and SHA-256, verifies the
+downloaded archive's integrity before extraction, and activates it under
+`~/.local/share/dots/releases/`. This checksum detects corruption or
+substitution only when the published checksum remains trustworthy; release
+artifacts are not cryptographically signed. The installer copies the released
+defaults, installs the mise tool manifest, configures the shell, and selects the
+default theme. Re-run the same command after a failed installation; completed
+steps are safe to converge again.
+
+Dots deliberately does not ship a Git name or email. Configure identity in the
+live user config when prompted:
+
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+```
 
 ## Developer mode
 

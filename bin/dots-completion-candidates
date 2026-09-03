@@ -11,24 +11,13 @@ fi
 
 DOTS_BIN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd) || exit 0
 DOTS_PATH=${DOTS_PATH:-${DOTS_BIN_DIR%/bin}}
-METADATA_SCAN_LIMIT=20
+DOTS_METADATA_SCAN_LIMIT=20
+source "$DOTS_PATH/install/helpers/metadata.sh"
 
 declare -A emitted=()
 
-metadata() { # metadata <file> <key>
-  local file=$1 key=$2 line count=0 prefix
-  prefix="# dots:$key="
-  while ((count < METADATA_SCAN_LIMIT)) && IFS= read -r line; do
-    count=$((count + 1))
-    if [[ $line == "$prefix"* ]]; then
-      printf '%s\n' "${line#"$prefix"}"
-      return 0
-    fi
-  done <"$file"
-}
-
 visible_command() { # visible_command <file>
-  [[ -f $1 && -x $1 && $(metadata "$1" hidden) != "true" ]]
+  [[ -f $1 && -x $1 && $(dots_command_metadata "$1" hidden) != "true" ]]
 }
 
 emit() { # emit <candidate>
@@ -59,7 +48,7 @@ emit_subcommands() { # emit_subcommands <dots-command-prefix>
 emit_argument_candidates() { # emit_argument_candidates <file> <argument-count>
   local file=$1 argument_count=$2 args_spec remaining option token value item name
 
-  args_spec=$(metadata "$file" args)
+  args_spec=$(dots_command_metadata "$file" args)
   remaining=$args_spec
   while [[ $remaining =~ (--[[:alnum:]][[:alnum:]-]*) ]]; do
     option=${BASH_REMATCH[1]}
@@ -147,7 +136,7 @@ fi
 command_file="$DOTS_BIN_DIR/$prefix"
 argument_count=$(( $# - command_argc ))
 if [[ $prefix == "dots" || -f $command_file && -x $command_file ]] &&
-  [[ $prefix == "dots" || $(metadata "$command_file" hidden) != "true" ]]; then
+  [[ $prefix == "dots" || $(dots_command_metadata "$command_file" hidden) != "true" ]]; then
   if ((argument_count == 0)); then
     emit -h
     emit --help

@@ -9,9 +9,10 @@ Pushing a version tag runs the GitHub release workflow. It builds and
 smoke-tests `dots-X.Y.Z.tar.gz`, then publishes that archive, `install.sh`,
 `SHA256SUMS`, and the updater-readable `dots-release.txt` manifest on the
 GitHub release. The generated installer pins that release's archive name and
-SHA-256; it downloads and verifies the artifact before delegating to the
-packaged transactional installer. The archive contains only the versioned
-runtime payload:
+SHA-256; it checks the artifact's integrity before delegating to the packaged
+transactional installer. Release artifacts are not cryptographically signed,
+so this check depends on the published checksum remaining trustworthy. The
+archive contains only the versioned runtime payload:
 `bin`, `config`, `default`, `install`, `migrations`, `themes`, and `version`,
 under a `dots-X.Y.Z` directory.
 

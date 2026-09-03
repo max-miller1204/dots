@@ -17,7 +17,7 @@ SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
 if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
-  exec "$DOTS_PATH/bin/dots-update" "$@"
+  exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"
 fi
 source "$DOTS_PATH/install/helpers/files.sh"
 source "$DOTS_PATH/install/helpers/releases.sh"
@@ -26,18 +26,9 @@ dots_file_assert_safe_parents "$STATE_DIR/update.log" "$HOME"
 UPDATE_LOCK="${DOTS_UPDATE_LOCK:-$STATE_DIR/update.lock}"
 
 update_lock_fd_valid() {
-  local lock_id fd_id
-
   { true >&9; } 2>/dev/null || return 1
   command -v flock >/dev/null 2>&1 || return 1
-  if [[ $(uname -s) == "Darwin" ]]; then
-    lock_id=$(stat -f '%d:%i' "$UPDATE_LOCK" 2>/dev/null) || return 1
-    fd_id=$(perl -e 'open(my $fh, "<&=9") or exit 1; my @s = stat($fh); print "$s[0]:$s[1]"' 2>/dev/null) || return 1
-  else
-    lock_id=$(stat -Lc '%d:%i' "$UPDATE_LOCK" 2>/dev/null) || return 1
-    fd_id=$(stat -Lc '%d:%i' /proc/self/fd/9 2>/dev/null) || return 1
-  fi
-  [[ $lock_id == "$fd_id" ]] || return 1
+  dots_file_path_matches_fd "$UPDATE_LOCK" 9 >/dev/null 2>&1 || return 1
 
   # Re-locking the inherited open file description succeeds. A forged fd on
   # the real file either acquires the lock (making the run safe) or fails while
@@ -122,7 +113,7 @@ if [[ -z $transcribed ]]; then
 
   # Stage 2 (locked): rotate a dead run's transcript before script(1)
   # truncates the log. A previous transcript with no terminal status marker
-  # means that run died — preserve it and leave a note marker for the
+  # means that run died: preserve it and leave a note marker for the
   # transcribed stage to report.
   mkdir -p "$STATE_DIR"
   promote_orderly_exit
@@ -157,7 +148,7 @@ if [[ -z $transcribed ]]; then
 
   # Hand script(1) the caller's tty only for an interactive foreground run
   # (so git can still prompt); pipes, sockets, closed stdin, and background
-  # jobs get /dev/null — script would drain a pipe into the transcript,
+  # jobs get /dev/null: script would drain a pipe into the transcript,
   # die on a socket, hang on a closed fd, or SIGTTOU-stop the run from a
   # background process group, all while holding the lock.
   if [[ ! -t 0 ]] || (($(ps -o tpgid= -p $$) != $(ps -o pgid= -p $$))); then
@@ -167,13 +158,14 @@ if [[ -z $transcribed ]]; then
   # BSD and util-linux script disagree on flags: BSD takes the command as
   # trailing args and propagates its exit status by default; util-linux
   # needs -e for the status and -c with a command string, which it hands
-  # to $SHELL — pinned to the running bash so the quoting always parses.
+  # to $SHELL: pinned to the running bash so the quoting always parses.
   script_rc=0
   if [[ $(uname -s) == "Darwin" ]]; then
     script -qF "$LOG_FILE" "$SELF_DIR/dots-update" --transcribed || script_rc=$?
   else
     inner="$SELF_DIR/dots-update"
-    SHELL=$BASH script -qefc "${inner@Q} --transcribed" "$LOG_FILE" || script_rc=$?
+    printf -v inner_quoted '%q' "$inner"
+    SHELL=$BASH script -qefc "$inner_quoted --transcribed" "$LOG_FILE" || script_rc=$?
   fi
   promote_orderly_exit "$script_rc"
   dots_file_remove "$ORDERLY_EXIT_FILE" discard
@@ -279,7 +271,7 @@ else
   degraded_steps+=("mise unavailable")
 fi
 
-# 3. Migrations, then the post-update hook — same order as omarchy update.
+# 3. Migrations, then the post-update hook: same order as omarchy update.
 # A migration failure must not skip the analyzer and restart report below.
 migrate_rc=0
 "$SELF_DIR/dots-migrate" || migrate_rc=$?

@@ -22,9 +22,10 @@ DOTS_PATH=$("$DOTS_BIN_DIR/dots-path-resolve") || exit 1
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd) || exit 1
 export DOTS_PATH
 if [[ $DOTS_BIN_DIR != "$DOTS_PATH/bin" ]]; then
-  exec "$DOTS_PATH/bin/dots" "$@"
+  exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"
 fi
-METADATA_SCAN_LIMIT=20
+DOTS_METADATA_SCAN_LIMIT=20
+source "$DOTS_PATH/install/helpers/metadata.sh"
 
 # The authoritative list of user-facing command groups. A group whose commands
 # are all `# dots:hidden=true` gets no entry and is omitted from the listing.
@@ -41,10 +42,6 @@ GROUP_DESCRIPTIONS[reinstall]="Reinstall and reset workflows"
 GROUP_DESCRIPTIONS[theme]="Theme management"
 GROUP_DESCRIPTIONS[update]="Dotfiles and system updates"
 GROUP_DESCRIPTIONS[version]="Version management"
-
-metadata() { # metadata <file> <key>
-  head -n "$METADATA_SCAN_LIMIT" "$1" | sed -n "s/^# dots:$2=//p" | head -1
-}
 
 command_group() { # command_group <basename>  (dots-theme-set -> theme)
   local rest=${1#dots-}
@@ -70,9 +67,9 @@ command_help() { # command_help <file>
   base=${file##*/}
   name=${base#dots-}
   name=${name//-/ }
-  summary=$(metadata "$file" summary)
-  args=$(metadata "$file" args)
-  examples=$(metadata "$file" examples)
+  summary=$(dots_command_metadata "$file" summary)
+  args=$(dots_command_metadata "$file" args)
+  examples=$(dots_command_metadata "$file" examples)
 
   if [[ -n $summary ]]; then
     echo "dots $name - $summary"
@@ -106,7 +103,7 @@ list_groups() {
   local file base group
   local -A seen=()
 
-  echo "dots — personal dotfiles, the omarchy way"
+  echo "dots: personal dotfiles, the omarchy way"
   echo
   echo "Usage: dots <group> [command] [args...]"
   echo
@@ -114,7 +111,7 @@ list_groups() {
 
   for file in "$DOTS_BIN_DIR"/dots-*; do
     [[ -f $file && -x $file ]] || continue
-    [[ $(metadata "$file" hidden) == "true" ]] && continue
+    [[ $(dots_command_metadata "$file" hidden) == "true" ]] && continue
     base=${file##*/}
     group=$(command_group "$base")
     [[ -n ${seen[$group]:-} ]] && continue
@@ -134,9 +131,9 @@ list_group() { # list_group <group>
   echo "dots $group commands:"
   for file in "$DOTS_BIN_DIR/dots-$group" "$DOTS_BIN_DIR/dots-$group"-*; do
     [[ -f $file && -x $file ]] || continue
-    [[ $(metadata "$file" hidden) == "true" ]] && continue
+    [[ $(dots_command_metadata "$file" hidden) == "true" ]] && continue
     base=${file##*/}
-    summary=$(metadata "$file" summary)
+    summary=$(dots_command_metadata "$file" summary)
     printf '  %-24s %s\n' "${base#dots-}" "$summary"
     found=1
   done
@@ -190,7 +187,7 @@ main() {
     exec "$DOTS_BIN_DIR/$best" "${rest[@]}"
   fi
 
-  if [[ -n ${GROUP_DESCRIPTIONS[$1]:-} ]]; then
+  if [[ -n $1 && -n ${GROUP_DESCRIPTIONS[$1]:-} ]]; then
     list_group "$1"
     exit 0
   fi

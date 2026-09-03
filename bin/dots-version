@@ -5,7 +5,7 @@
 SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=$("$SELF_DIR/dots-path-resolve") || exit 1
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd) || exit 1
-if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-version" "$@"; fi
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"; fi
 source "$DOTS_PATH/install/helpers/files.sh"
 source "$DOTS_PATH/install/helpers/releases.sh"
 

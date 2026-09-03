@@ -9,7 +9,7 @@ fi
 # login can opt in using the steps in docs/setup.md.
 
 # Add your `defaults write` tweaks here. Examples (all commented out on
-# purpose — enable the ones you actually want):
+# purpose: enable the ones you actually want):
 #
 #   # Faster key repeat
 #   defaults write NSGlobalDomain KeyRepeat -int 2

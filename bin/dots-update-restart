@@ -12,7 +12,7 @@ set -eo pipefail
 SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd) || exit 1
-if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-update-restart" "$@"; fi
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"; fi
 source "$DOTS_PATH/install/helpers/files.sh"
 
 state_dir="$HOME/.local/state/dots"
@@ -27,7 +27,7 @@ for marker in "$state_dir"/restart-*-required; do
   name=${marker##*/restart-}
   name=${name%-required}
   case "$name" in
-    shell) echo 'Restart required: shell — open a new terminal or run: exec "$SHELL" -l' ;;
+    shell) echo 'Restart required: shell: open a new terminal or run: exec "$SHELL" -l' ;;
     *) echo "Restart required: $name" ;;
   esac
   rm -f "$marker"

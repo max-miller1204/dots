@@ -12,7 +12,8 @@ if [[ ( -e $path_file || -L $path_file ) && ( -L $path_file || ! -f $path_file )
 fi
 if [[ -f $path_file ]]; then
   mapfile -t configured_lines <"$path_file"
-  if ((${#configured_lines[@]} != 1)) || [[ -z ${configured_lines[0]} || ${configured_lines[0]} == *:* ]]; then
+  if ((${#configured_lines[@]} != 1)) ||
+    [[ -z ${configured_lines[0]} || ${configured_lines[0]} != /* || ${configured_lines[0]} == *:* ]]; then
     echo "Invalid dots source path file: $path_file" >&2
     exit 1
   fi

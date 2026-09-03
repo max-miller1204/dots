@@ -1,6 +1,7 @@
 # Single source of truth for DOTS_PATH + PATH adjustments. Sourced by:
 #   ~/.bashrc   (interactive and some non-interactive Bash sessions)
-#   ~/.zshrc    (interactive Zsh)
+#   ~/.zshenv   (interactive and non-interactive Zsh sessions)
+#   ~/.zshrc    (interactive Zsh, including direct/manual sourcing)
 #
 # A non-default checkout is stored as plain data in ~/.config/dots/path. It is
 # deliberately never sourced as shell code. Newlines are rejected by the
@@ -18,13 +19,13 @@ if [[ -f $dots_path_file ]]; then
     dots_path_count=$((dots_path_count + 1))
     dots_path_value=$dots_path_line
   done <"$dots_path_file"
-  if ((dots_path_count == 1)) && [[ -n $dots_path_value && $dots_path_value != *:* ]]; then
+  if ((dots_path_count == 1)) && [[ $dots_path_value == /* && $dots_path_value != *:* ]]; then
     DOTS_PATH=$dots_path_value
   else
     DOTS_PATH=""
   fi
 fi
-if [[ -z ${DOTS_PATH:-} || $DOTS_PATH == *$'\n'* || $DOTS_PATH == *:* ]]; then
+if [[ ${DOTS_PATH:-} != /* || $DOTS_PATH == *$'\n'* || $DOTS_PATH == *:* ]]; then
   DOTS_PATH="$HOME/dotfiles"
 fi
 unset dots_path_file dots_path_value dots_path_count dots_path_line
@@ -57,11 +58,14 @@ fi
 unset hb_prefix
 
 # The active immutable release (or explicitly linked developer checkout) owns
-# the command tree, so its bin/ is always prepended.
-case ":$PATH:" in
-  *":${DOTS_PATH%/}/bin:"*) ;;
-  *) PATH="${DOTS_PATH%/}/bin${PATH:+:$PATH}" ;;
-esac
+# the command tree, so its bin/ is always first, including after re-sourcing.
+dots_bin="${DOTS_PATH%/}/bin"
+PATH=":$PATH:"
+PATH=${PATH//":$dots_bin:"/:}
+PATH=${PATH#:}
+PATH=${PATH%:}
+PATH="$dots_bin${PATH:+:$PATH}"
+unset dots_bin
 
 # User-level tool paths, appended so system binaries keep precedence.
 case ":$PATH:" in

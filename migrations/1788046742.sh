@@ -3,12 +3,19 @@
 # overwriting user-managed configs. Fresh installs already receive these files
 # from config/ and default/.
 
+set -euo pipefail
+
+: "${DOTS_PATH:?DOTS_PATH must identify the active dots runtime}"
 source "$DOTS_PATH/install/helpers/files.sh"
 
 install_config_if_missing() { # install_config_if_missing <repo-relative-config-path>
   local rel=$1 src="$DOTS_PATH/config/$1" dest="$HOME/.config/$1"
 
-  [[ -f $src && ! -e $dest && ! -L $dest ]] || return 0
+  if [[ ! -f $src ]]; then
+    echo "Missing shipped config required by migration: $src" >&2
+    return 1
+  fi
+  [[ ! -e $dest && ! -L $dest ]] || return 0
   dots_file_replace "$src" "$dest" discard
   echo "Installed missing config: ~/.config/$rel"
 }
@@ -30,7 +37,6 @@ config_files=(
   nvim/lua/config/keymaps.lua
   nvim/lua/config/lazy.lua
   nvim/lua/config/options.lua
-  nvim/lua/plugins/example.lua
   nvim/stylua.toml
   opencode/opencode.jsonc
   opencode/tui.jsonc
@@ -67,7 +73,7 @@ fi
 if command -v mise >/dev/null 2>&1; then
   tools=(
     bat@latest
-    claude@latest
+    claude@2
     codex@latest
     eza@latest
     fastfetch@latest
@@ -83,6 +89,7 @@ if command -v mise >/dev/null 2>&1; then
     lazygit@latest
     neovim@latest
     node@lts
+    npm:@playwright/cli@latest
     npm:stepstone@latest
     opencode@latest
     pi@latest
@@ -92,13 +99,16 @@ if command -v mise >/dev/null 2>&1; then
     tmux@latest
     zoxide@latest
   )
-  if ! mise use --global "${tools[@]}"; then
-    echo "Could not merge the shipped tool suite; the migration will retry next update." >&2
-    exit 1
-  fi
+  tool_merge_failed=""
+  for tool in "${tools[@]}"; do
+    if ! mise use --global "$tool"; then
+      echo "Could not merge $tool; the migration will retry it next update." >&2
+      tool_merge_failed=1
+    fi
+  done
 else
   echo "mise is required to adopt the shipped tool suite; the migration will retry next update." >&2
-  exit 1
+  tool_merge_failed=1
 fi
 
 # Replace only the exact shell defaults shipped before the modular shell setup.
@@ -177,4 +187,8 @@ fi
 current_theme="$HOME/.local/state/dots/current/theme.name"
 if [[ -f $current_theme ]]; then
   "$DOTS_PATH/bin/dots-theme-set" "$(<"$current_theme")"
+fi
+
+if [[ -n ${tool_merge_failed:-} ]]; then
+  exit 1
 fi

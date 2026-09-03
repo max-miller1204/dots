@@ -10,7 +10,7 @@ n() {
 # Preserve macOS's native `open`; provide the familiar name on Linux only.
 if [[ $(uname -s) == "Linux" ]] && command -v xdg-open >/dev/null 2>&1; then
   open() {
-    command xdg-open "$@" >/dev/null 2>&1 &
+    (command xdg-open "$@" >/dev/null 2>&1 &)
   }
 fi
 

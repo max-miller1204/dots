@@ -43,10 +43,16 @@ The synchronizers preserve files they cannot prove dots owns. They also validate
 
 User-owned additions live under `~/.config/dots/`:
 
-- `themes/<name>/` — machine-specific theme files
-- `themed/*.tpl` — machine-wide templates that shadow built-ins with the same output name
+- `themes/<name>/` - machine-specific theme files
+- `themed/*.tpl` - machine-wide templates that shadow built-ins with the same output name
 
-Regular files supplied directly by a theme override rendered templates. Theme source trees may not contain symlinks, and generated output occupants must be regular files. Rendering fails before publication if a supported placeholder remains unresolved.
+A user theme whose name matches a built-in overlays that built-in: files from
+the user directory replace same-named shipped files, while all other built-in
+files remain available. A user-only name creates a standalone theme. Regular
+files supplied directly by either source override rendered templates. Theme
+source trees may not contain symlinks, and generated output occupants must be
+regular files. Rendering fails before publication if a supported placeholder
+remains unresolved.
 
 Supported palette parsing covers quoted top-level values and derived selection foreground/background values. Omarchy mix, gradient, nested TOML, and remote-theme payload semantics are intentionally unsupported.
 

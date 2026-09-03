@@ -5,6 +5,12 @@
 
 set -euo pipefail
 
+SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
+DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"; fi
+source "$DOTS_PATH/install/helpers/theme-generation.sh"
+
 pointer_name=current
 if [[ ${1:-} == "--previous" ]]; then
   pointer_name=theme-previous
@@ -19,18 +25,6 @@ state_root="$HOME/.local/state/dots"
 pointer="$state_root/$pointer_name"
 [[ -L $pointer ]] || exit 1
 target=$(readlink "$pointer")
-[[ $target =~ ^theme-generations/(generation|recovery)\.[A-Za-z0-9]+$ ]] || exit 1
-generation="$state_root/$target"
-marker="$generation/.dots-theme-generation"
-name_file="$generation/theme.name"
-source_path="$generation/theme/$1"
-
-[[ ! -L $generation && -d $generation ]] || exit 1
-[[ ! -L $generation/theme && -d $generation/theme ]] || exit 1
-[[ ! -L $marker && -f $marker ]] || exit 1
-mapfile -t marker_lines <"$marker"
-((${#marker_lines[@]} == 1)) && [[ ${marker_lines[0]} == "dots-theme-generation-v1" ]] || exit 1
-[[ ! -L $name_file && -f $name_file ]] || exit 1
-mapfile -t name_lines <"$name_file"
-((${#name_lines[@]} == 1)) && [[ ${name_lines[0]} =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || exit 1
+dots_theme_generation_target_valid "$state_root" "$target" || exit 1
+source_path="$state_root/$target/theme/$1"
 [[ ! -L $source_path && -f $source_path ]]

@@ -14,6 +14,7 @@ fi
 tag=$1
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_root=$(cd -- "$script_dir/.." && pwd)
+source "$repo_root/install/helpers/archive.sh"
 output_dir=${2:-"$repo_root/dist"}
 version_pattern='(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})'
 
@@ -70,18 +71,14 @@ COPYFILE_DISABLE=1 git -C "$repo_root" archive \
   HEAD \
   -- "${payload[@]}" | gzip -n >"$temporary_archive"
 
-if ! verbose_listing=$(tar -tvzf "$temporary_archive"); then
-  echo "Smoke test failed: release archive cannot be listed." >&2
+if ! dots_archive_regular_entries_only "$temporary_archive"; then
+  if [[ $DOTS_ARCHIVE_VALIDATION_ERROR == "unreadable" ]]; then
+    echo "Smoke test failed: release archive cannot be listed." >&2
+  else
+    echo "Smoke test failed: release archive contains a link or special entry." >&2
+  fi
   exit 1
 fi
-while IFS= read -r listing_line; do
-  [[ -n $listing_line ]] || continue
-  entry_type=${listing_line:0:1}
-  if [[ $entry_type != "-" && $entry_type != "d" ]]; then
-    echo "Smoke test failed: release archive contains a link or special entry." >&2
-    exit 1
-  fi
-done <<<"$verbose_listing"
 
 smoke_dir=$(mktemp -d "${TMPDIR:-/tmp}/dots-release.XXXXXX")
 COPYFILE_DISABLE=1 tar -xzf "$temporary_archive" -C "$smoke_dir"

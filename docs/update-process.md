@@ -8,7 +8,7 @@ updates go wrong.
 dots-update
   ├─ dots-update-lock                  serialize concurrent runs
   │    (flock(1) on an fd the pipeline inherits: the kernel releases the
-  │     lock when the last holder exits, SIGKILL included — util-linux on
+  │     lock when the last holder exits, SIGKILL included: util-linux on
   │     Ubuntu/WSL, discoteq flock via brew on macOS)
   ├─ transcript: script(1) records the run off a real pty into
   │    ~/.local/state/dots/update.log (BSD and util-linux flag syntax
@@ -68,9 +68,9 @@ finish.
 and the configured Git upstream in developer mode. Exit codes are distinct so
 scripts can tell the states apart:
 
-- `0` — updates available (published version or pending commits printed)
-- `1` — up to date
-- `2` — cannot determine (release metadata unavailable, no developer upstream, or an update owns the lock)
+- `0`: updates available (published version or pending commits printed)
+- `1`: up to date
+- `2`: cannot determine (release metadata unavailable, no developer upstream, or an update owns the lock)
 
 The availability check shares the update lock so its release check or Git fetch
 cannot race a full update. Developer mode falls back to existing

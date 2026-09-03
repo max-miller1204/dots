@@ -8,31 +8,12 @@ set -euo pipefail
 SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
-if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-theme-sync-btop" "$@"; fi
-source "$DOTS_PATH/install/helpers/files.sh"
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"; fi
+source "$DOTS_PATH/install/helpers/theme-sync.sh"
 
-source_path="$HOME/.local/state/dots/current/theme/btop.theme"
 config_dir="${BTOP_CONFIG_DIR:-$HOME/.config/btop}"
-theme_dir="$config_dir/themes"
-theme_path="$theme_dir/dots-system.theme"
-
-[[ -L $source_path ]] && { echo "Refusing symlinked btop theme source: $source_path" >&2; exit 1; }
-[[ -d $config_dir && -f $source_path ]] || exit 0
-"$SELF_DIR/dots-theme-source-valid" btop.theme || {
-  echo "Refusing unowned btop theme source: $source_path" >&2
-  exit 1
-}
-dots_file_assert_safe_parents "$theme_path" "$HOME"
-
-mkdir -p "$theme_dir"
-if [[ -e $theme_path || -L $theme_path ]]; then
-  if [[ ! -L $theme_path || $(readlink "$theme_path") != "$source_path" ]]; then
-    echo "Skipping btop theme link: $theme_path is not dots-owned" >&2
-    exit 0
-  fi
-else
-  ln -s "$source_path" "$theme_path"
-fi
+dots_theme_sync_link \
+  btop.theme "btop theme" "$config_dir" "$config_dir/themes/dots-system.theme"
 
 # btop reloads its selected theme on SIGUSR2.
-pkill -USR2 -x btop 2>/dev/null || true
+[[ -z $DOTS_THEME_SYNC_APPLIED ]] || pkill -USR2 -x btop 2>/dev/null || true

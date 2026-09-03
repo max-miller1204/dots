@@ -16,7 +16,12 @@ cat >"$SANDBOX/stub/mise" <<'MISE'
 #!/usr/bin/env bash
 exit 0
 MISE
-chmod +x "$SANDBOX/stub/mise"
+cat >"$SANDBOX/stub/brew" <<'BREW'
+#!/usr/bin/env bash
+echo "release test attempted to invoke Homebrew" >&2
+exit 1
+BREW
+chmod +x "$SANDBOX/stub/mise" "$SANDBOX/stub/brew"
 export PATH="$SANDBOX/stub:$PATH"
 source "$ROOT/install/helpers/files.sh"
 source "$ROOT/install/helpers/releases.sh"
@@ -113,7 +118,7 @@ bootstrap_home=$(cd -- "$bootstrap_home" && pwd)
 bootstrap_tmp=$(cd -- "$bootstrap_tmp" && pwd)
 cat "$bootstrap_installer" | \
   HOME="$bootstrap_home" TMPDIR="$bootstrap_tmp" PATH="$SANDBOX/stub:$PATH" \
-  DOTS_RELEASE_BASE_URL="file://$release_server" /bin/bash >/dev/null
+  DOTS_RELEASE_BASE_URL="file://$release_server" "$BASH" >/dev/null
 bootstrap_current="$bootstrap_home/.local/share/dots/current"
 [[ $(cat "$bootstrap_home/.config/dots/path") == "$bootstrap_current" ]] || fail "release installer did not select stable mode"
 bootstrap_version_output=$(HOME="$bootstrap_home" DOTS_PATH= "$bootstrap_current/bin/dots-version")
@@ -132,7 +137,7 @@ mkdir -p "$bad_bootstrap_home"
   0000000000000000000000000000000000000000000000000000000000000000 \
   "$bad_bootstrap_installer"
 if HOME="$bad_bootstrap_home" PATH="$SANDBOX/stub:$PATH" \
-  DOTS_RELEASE_BASE_URL="file://$release_server" /bin/bash "$bad_bootstrap_installer" >/dev/null 2>&1; then
+  DOTS_RELEASE_BASE_URL="file://$release_server" "$BASH" "$bad_bootstrap_installer" >/dev/null 2>&1; then
   fail "release installer accepted an invalid checksum"
 fi
 [[ ! -e $bad_bootstrap_home/.local/share/dots/current ]] || fail "failed release installer activated a release"
@@ -191,6 +196,26 @@ if "$ROOT/scripts/build-installer.sh" 01.2.3 dots-01.2.3.tar.gz \
   fail "installer renderer accepted a noncanonical release version"
 fi
 assertions=$((assertions + 6))
+
+# Explicit version installs bound and retry the checksum request just like the
+# manifest and archive downloads.
+real_curl=$(command -v curl)
+export DOTS_TEST_REAL_CURL=$real_curl
+cat >"$SANDBOX/stub/curl" <<'CURL'
+#!/usr/bin/env bash
+[[ -z ${DOTS_TEST_CURL_TRACE:-} ]] || printf '%s\n' "$*" >>"$DOTS_TEST_CURL_TRACE"
+exec "$DOTS_TEST_REAL_CURL" "$@"
+CURL
+chmod +x "$SANDBOX/stub/curl"
+checksum_curl_trace="$SANDBOX/checksum-curl-trace"
+checksum_home="$SANDBOX/checksum-home"
+mkdir -p "$checksum_home"
+HOME="$checksum_home" DOTS_PATH="$ROOT" DOTS_TEST_CURL_TRACE="$checksum_curl_trace" \
+  "$ROOT/bin/dots-version-install" 1.1.0 >/dev/null
+checksum_curl_args=$(grep 'SHA256SUMS' "$checksum_curl_trace")
+assert_contains "$checksum_curl_args" "--connect-timeout 10 --max-time 60 --retry 2" \
+  "explicit checksum download has bounded retries"
+assertions=$((assertions + 1))
 
 # A pre-existing release-directory symlink is never adopted, even when its
 # target carries internally valid metadata for that version.
@@ -282,13 +307,38 @@ done
 [[ -z $first_migration || -f "$HOME/.local/state/dots/migrations/$(basename "$first_migration")" ]] || fail "version install did not run pending migrations"
 [[ $(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS") == "1.1.0" ]] || fail "previous release was not retained"
 
+# A canonical previous pointer whose release was removed is stale owned state,
+# not a permanent activation wedge. Ordinary reconciliation removes it while
+# malformed or non-dangling invalid occupants remain protected.
+rm "$DOTS_RELEASE_PREVIOUS"
+ln -s releases/9.9.9 "$DOTS_RELEASE_PREVIOUS"
+[[ -L $DOTS_RELEASE_PREVIOUS && ! -e $DOTS_RELEASE_PREVIOUS ]] || fail "test previous pointer is not dangling"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.1" ]] || fail "dangling previous pointer blocked reading current"
+[[ ! -e $DOTS_RELEASE_PREVIOUS && ! -L $DOTS_RELEASE_PREVIOUS ]] || fail "pointer read did not remove dangling previous"
+ln -s releases/9.9.9 "$DOTS_RELEASE_PREVIOUS"
+dots_release_activate 1.1.1 || fail "no-op activation was wedged by a dangling previous pointer"
+[[ ! -e $DOTS_RELEASE_PREVIOUS && ! -L $DOTS_RELEASE_PREVIOUS ]] || fail "no-op activation did not remove dangling previous"
+dots_release_activate 1.1.0 || fail "activation failed after dangling previous remediation"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.0" ]] || fail "activation after dangling previous selected the wrong release"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS") == "1.1.1" ]] || fail "activation after dangling previous lost its rollback target"
+dots_release_activate 1.1.1 || fail "could not restore release state after dangling pointer check"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS") == "1.1.0" ]] || fail "restored release state has the wrong previous pointer"
+rm "$DOTS_RELEASE_CURRENT"
+ln -s releases/9.9.8 "$DOTS_RELEASE_CURRENT"
+[[ -L $DOTS_RELEASE_CURRENT && ! -e $DOTS_RELEASE_CURRENT ]] || fail "test current pointer is not dangling"
+dots_release_activate 1.1.1 || fail "activation was wedged by a dangling current pointer"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.1" ]] || fail "activation did not repair dangling current"
+assertions=$((assertions + 12))
+
 rc=0
 DOTS_RELEASE_TEST_FAIL_AT=after-previous dots_release_activate 1.1.0 >/dev/null 2>&1 || rc=$?
 ((rc == 86)) || fail "pointer failure injection returned $rc instead of 86"
 [[ $(readlink "$DOTS_RELEASE_CURRENT") == "releases/1.1.1" ]] || fail "failed activation changed current"
 [[ $(readlink "$DOTS_RELEASE_PREVIOUS") == "releases/1.1.1" ]] || fail "failure injection did not reach partial pointer state"
 [[ -f $DOTS_RELEASE_POINTER_TRANSACTION ]] || fail "failed activation left no recovery transaction"
-[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.1" ]] || fail "failed activation did not restore current"
+rm "$DOTS_RELEASE_PREVIOUS"
+ln -s releases/9.9.9 "$DOTS_RELEASE_PREVIOUS"
+[[ $(dots_release_pointer_version "$DOTS_RELEASE_CURRENT") == "1.1.1" ]] || fail "failed activation did not restore current across a dangling previous pointer"
 [[ $(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS") == "1.1.0" ]] || fail "failed activation lost the prior rollback target"
 [[ ! -e $DOTS_RELEASE_POINTER_TRANSACTION ]] || fail "recovered activation retained its transaction"
 
@@ -302,7 +352,7 @@ DOTS_RELEASE_TEST_CRASH_AT=after-current bash -c \
 [[ $(dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS") == "1.1.1" ]] || fail "completed transition lost its rollback target"
 [[ ! -e $DOTS_RELEASE_POINTER_TRANSACTION ]] || fail "completed recovery retained its transaction"
 dots_release_activate 1.1.1 || fail "could not restore release state after recovery checks"
-assertions=$((assertions + 12))
+assertions=$((assertions + 13))
 
 DOTS_RELEASE_TEST_PAUSE_AT=after-previous \
   "$DOTS_RELEASE_CURRENT/bin/dots-version-rollback" >/dev/null &

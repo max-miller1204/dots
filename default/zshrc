@@ -1,4 +1,4 @@
-# This file is yours. It is seeded from ~/dotfiles/default/zshrc at install
+# This file is yours. It is seeded from the active dots runtime at install
 # (with a backup of any previous version) and never touched by `dots update`.
 # `dots reinstall configs` resets it to the shipped default.
 
@@ -19,11 +19,21 @@ if [[ -f $HOME/.config/dots/path ]]; then
 else
   dots_bootstrap_path=${DOTS_PATH:-}
 fi
-if [[ -z $dots_bootstrap_path || $dots_bootstrap_path == *$'\n'* || $dots_bootstrap_path == *:* ]]; then
+if [[ $dots_bootstrap_path != /* || $dots_bootstrap_path == *$'\n'* || $dots_bootstrap_path == *:* ]]; then
   dots_bootstrap_path="$HOME/dotfiles"
 fi
-. "$dots_bootstrap_path/default/bash/env-bootstrap"
-unset dots_bootstrap_path dots_bootstrap_count dots_bootstrap_line
+dots_bootstrap_file="$dots_bootstrap_path/default/bash/env-bootstrap"
+if [[ ! -r $dots_bootstrap_file ]]; then
+  unset dots_bootstrap_path dots_bootstrap_file dots_bootstrap_count dots_bootstrap_line
+  return 0 2>/dev/null || exit 0
+fi
+. "$dots_bootstrap_file"
+unset dots_bootstrap_path dots_bootstrap_file dots_bootstrap_count dots_bootstrap_line
+
+# Non-interactive Zsh gets its environment from ~/.zshenv. Keep aliases,
+# history, completion, directory hooks, and prompts out of script shells.
+[[ -o interactive ]] || return 0 2>/dev/null || exit 0
+[[ -r $DOTS_PATH/default/bash/shell ]] || return 0 2>/dev/null || exit 0
 
 # These defaults intentionally use syntax shared by Bash 5 and Zsh.
 . "$DOTS_PATH/default/bash/shell"

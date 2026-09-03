@@ -7,4 +7,4 @@
 # and macOS users who explicitly choose Homebrew Bash instead of the default
 # Zsh login shell.
 
-[ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"
+[[ -f $HOME/.bashrc ]] && . "$HOME/.bashrc"
