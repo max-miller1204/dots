@@ -387,8 +387,16 @@ assertions=$((assertions + 4))
 
 # --- newly published mise tool versions remain immediately eligible. Parse
 # the manifest into a normalized model without relying on provisioned tools.
+normalize_mise_toml() {
+  local file=$1 byte_dump
+
+  byte_dump=$(LC_ALL=C od -An -v -t x1 "$file") || return
+  [[ ! $byte_dump =~ (^|[[:space:]])00($|[[:space:]]) ]] || return 1
+  iconv -f UTF-8 -t UTF-8 "$file" >/dev/null 2>&1 || return
+  LC_ALL=C awk -f "$ROOT/test/toml-normalize.awk" "$file"
+}
 normalized_mise="$SANDBOX/mise-config.normalized"
-if ! awk -f "$ROOT/test/toml-normalize.awk" "$ROOT/config/mise/config.toml" >"$normalized_mise"; then
+if ! normalize_mise_toml "$ROOT/config/mise/config.toml" >"$normalized_mise"; then
   fail "mise config is not valid supported TOML"
 fi
 declare -A mise_types mise_values
@@ -401,39 +409,56 @@ done <"$normalized_mise"
   fail "mise config lost the zero release-age default"
 duplicate_table="$SANDBOX/duplicate-table.toml"
 printf '[settings]\nminimum_release_age = "0s"\n[settings]\nother = "value"\n' >"$duplicate_table"
-if awk -f "$ROOT/test/toml-normalize.awk" "$duplicate_table" >/dev/null 2>&1; then
+if normalize_mise_toml "$duplicate_table" >/dev/null 2>&1; then
   fail "TOML normalizer accepted a duplicate table"
 fi
 duplicate_key="$SANDBOX/duplicate-key.toml"
 printf '[settings]\nminimum_release_age = "0s"\nminimum_release_age = "1s"\n' >"$duplicate_key"
-if awk -f "$ROOT/test/toml-normalize.awk" "$duplicate_key" >/dev/null 2>&1; then
+if normalize_mise_toml "$duplicate_key" >/dev/null 2>&1; then
   fail "TOML normalizer accepted a duplicate key"
 fi
 scalar_then_table="$SANDBOX/scalar-then-table.toml"
 printf 'settings = "shadow"\n[settings]\nminimum_release_age = "0s"\n' >"$scalar_then_table"
-if awk -f "$ROOT/test/toml-normalize.awk" "$scalar_then_table" >/dev/null 2>&1; then
+if normalize_mise_toml "$scalar_then_table" >/dev/null 2>&1; then
   fail "TOML normalizer accepted a scalar followed by the same table"
 fi
 table_then_scalar="$SANDBOX/table-then-scalar.toml"
 printf '[settings.minimum_release_age]\nvalue = "0s"\n[settings]\nminimum_release_age = "shadow"\n' \
   >"$table_then_scalar"
-if awk -f "$ROOT/test/toml-normalize.awk" "$table_then_scalar" >/dev/null 2>&1; then
+if normalize_mise_toml "$table_then_scalar" >/dev/null 2>&1; then
   fail "TOML normalizer accepted a table followed by the same scalar path"
 fi
 scalar_parent="$SANDBOX/scalar-parent.toml"
 printf 'settings = "shadow"\n[settings.child]\nvalue = "0s"\n' >"$scalar_parent"
-if awk -f "$ROOT/test/toml-normalize.awk" "$scalar_parent" >/dev/null 2>&1; then
+if normalize_mise_toml "$scalar_parent" >/dev/null 2>&1; then
   fail "TOML normalizer accepted a table beneath a scalar"
 fi
 for malformed_number in 1_ 1__2 01; do
   malformed_number_file="$SANDBOX/malformed-number-$malformed_number.toml"
   printf '[settings]\nminimum_release_age = "0s"\n[tools]\nbad = %s\n' "$malformed_number" \
     >"$malformed_number_file"
-  if awk -f "$ROOT/test/toml-normalize.awk" "$malformed_number_file" >/dev/null 2>&1; then
+  if normalize_mise_toml "$malformed_number_file" >/dev/null 2>&1; then
     fail "TOML normalizer accepted malformed number: $malformed_number"
   fi
 done
-assertions=$((assertions + 9))
+control_toml="$SANDBOX/control-string.toml"
+printf '[settings]\nminimum_release_age = "0s"\n[tools]\nbad = "before\177after"\n' >"$control_toml"
+if normalize_mise_toml "$control_toml" >/dev/null 2>&1; then
+  fail "TOML normalizer accepted a raw forbidden control"
+fi
+escaped_control_toml="$SANDBOX/escaped-control-string.toml"
+printf '[settings]\nminimum_release_age = "0s"\n[tools]\nbad = "before\\u007Fafter"\n' \
+  >"$escaped_control_toml"
+if normalize_mise_toml "$escaped_control_toml" >/dev/null 2>&1; then
+  fail "TOML normalizer accepted a decoded forbidden control"
+fi
+tab_toml="$SANDBOX/tab-string.toml"
+printf '[settings]\nminimum_release_age = "before\tafter"\n[tools]\nescaped = "before\\tafter"\n' \
+  >"$tab_toml"
+tab_model=$(normalize_mise_toml "$tab_toml") || fail "TOML normalizer rejected permitted tabs"
+[[ $tab_model == $'basic-string\tsettings.minimum_release_age\tbefore\tafter\nbasic-string\ttools.escaped\tbefore\tafter' ]] ||
+  fail "TOML normalizer did not preserve permitted tabs"
+assertions=$((assertions + 12))
 
 # --- free-space guard
 DOTS_UPDATE_MIN_FREE_KB=1 "$ROOT/bin/dots-update-requires-free-space" ||

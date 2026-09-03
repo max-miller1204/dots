@@ -60,6 +60,45 @@ function normalize_key(value) {
   fail("unsupported key on line " NR)
 }
 
+function decode_basic_string(value, content, decoded, position, character, escape, hex) {
+  if (substr(value, 1, 1) != "\"" || substr(value, length(value), 1) != "\"") {
+    fail("invalid basic string on line " NR)
+  }
+  content = substr(value, 2, length(value) - 2)
+  decoded = ""
+  for (position = 1; position <= length(content); position++) {
+    character = substr(content, position, 1)
+    if (character ~ /[\001-\010\013-\037\177]/) {
+      fail("forbidden control in basic string on line " NR)
+    }
+    if (character == "\"") fail("unescaped quote in basic string on line " NR)
+    if (character != "\\") {
+      decoded = decoded character
+      continue
+    }
+    position++
+    if (position > length(content)) fail("unterminated escape on line " NR)
+    escape = substr(content, position, 1)
+    if (escape == "t") {
+      decoded = decoded sprintf("%c", 9)
+    } else if (escape == "\"" || escape == "\\") {
+      decoded = decoded escape
+    } else if (escape == "u" || escape == "U") {
+      hex = substr(content, position + 1, escape == "u" ? 4 : 8)
+      if ((escape == "u" && hex == "0009") ||
+        (escape == "U" && hex == "00000009")) {
+        decoded = decoded sprintf("%c", 9)
+        position += escape == "u" ? 4 : 8
+      } else {
+        fail("unsupported or forbidden Unicode escape on line " NR)
+      }
+    } else {
+      fail("unsupported escape on line " NR)
+    }
+  }
+  return decoded
+}
+
 function define_table(path, parent) {
   if (path in nodes && nodes[path] != "table") {
     fail("table conflicts with key " path " on line " NR)
@@ -93,10 +132,11 @@ function record(type, path, value, inline_parent, parent, existing) {
   print type "\t" path "\t" value
 }
 
-function normalize_scalar(path, value, inline_parent) {
+function normalize_scalar(path, value, inline_parent, decoded) {
   value = trim(value)
-  if (value ~ /^"[^"\\]*"$/) {
-    record("basic-string", path, substr(value, 2, length(value) - 2), inline_parent)
+  if (value ~ /^"/) {
+    decoded = decode_basic_string(value)
+    record("basic-string", path, decoded, inline_parent)
   } else if (value == "true" || value == "false") {
     record("boolean", path, value, inline_parent)
   } else {
