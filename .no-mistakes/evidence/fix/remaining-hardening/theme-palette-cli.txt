@@ -1,0 +1,8 @@
+COMMAND: render palette containing a literal tab
+rendered_bytes=7461623d6265666f72650961667465720a
+rendered_visible=tab=before[TAB]after
+
+COMMAND: reject forbidden raw control after a comment marker
+Invalid theme palette /Users/maxmiller/.no-mistakes/worktrees/e030e65a1343/01M1JY11C3BCCWY33B73W0TZ48/.manual-evidence.Vs7AWG/invalid-theme/colors.toml:32: forbidden control character
+exit=1
+rendered_output=not-written

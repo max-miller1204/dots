@@ -1,0 +1,9 @@
+COMMAND: dots version prune (answer: n)
+Remove old verified dots releases (preserving current and previous)? [y/N] Prune cancelled.
+exit=1
+releases_after_decline=1.1.0,1.1.1,1.1.2
+
+COMMAND: dots version prune --force
+Removed dots release 1.1.2.
+Pruned 1 release(s); skipped 0 invalid entry(s).
+releases_after_force=1.1.0,1.1.1
