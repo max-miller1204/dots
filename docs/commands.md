@@ -9,11 +9,11 @@ events, and configuration paths.
 | --- | --- |
 | `dots install` | Install the latest stable runtime, configuration files, shell, and tools. |
 | `dots install --developer` | Install directly from the current checkout. |
-| `dots update` | Update the stable release or developer checkout. Then update tools. Run migrations. |
+| `dots update` | Update the stable release or developer checkout. Run migrations. Then update tools. |
 | `dots update available` | Report an available release or pending developer commits. |
 | `dots version` | Show the active Dots version and runtime mode. |
-| `dots version install [version]` | Install a release. Activate the release. Then update tools. Run migrations. |
-| `dots version adopt` | Change an installation from checkout mode to stable mode. Then update tools. Run migrations. |
+| `dots version install [version]` | Install a release. Activate the release. Run migrations. Then update tools. |
+| `dots version adopt` | Change an installation from checkout mode to stable mode. Run migrations. Then update tools. |
 | `dots version list` | List releases. `*` is current, `-` is previous, and `!` is invalid. |
 | `dots version prune [--force]` | Remove inactive verified releases. Keep the current and previous releases. |
 | `dots version rollback` | Change the runtime to the previous release. |
