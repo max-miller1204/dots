@@ -409,7 +409,23 @@ printf '[settings]\nminimum_release_age = "0s"\nminimum_release_age = "1s"\n' >"
 if awk -f "$ROOT/test/toml-normalize.awk" "$duplicate_key" >/dev/null 2>&1; then
   fail "TOML normalizer accepted a duplicate key"
 fi
-assertions=$((assertions + 3))
+scalar_then_table="$SANDBOX/scalar-then-table.toml"
+printf 'settings = "shadow"\n[settings]\nminimum_release_age = "0s"\n' >"$scalar_then_table"
+if awk -f "$ROOT/test/toml-normalize.awk" "$scalar_then_table" >/dev/null 2>&1; then
+  fail "TOML normalizer accepted a scalar followed by the same table"
+fi
+table_then_scalar="$SANDBOX/table-then-scalar.toml"
+printf '[settings.minimum_release_age]\nvalue = "0s"\n[settings]\nminimum_release_age = "shadow"\n' \
+  >"$table_then_scalar"
+if awk -f "$ROOT/test/toml-normalize.awk" "$table_then_scalar" >/dev/null 2>&1; then
+  fail "TOML normalizer accepted a table followed by the same scalar path"
+fi
+scalar_parent="$SANDBOX/scalar-parent.toml"
+printf 'settings = "shadow"\n[settings.child]\nvalue = "0s"\n' >"$scalar_parent"
+if awk -f "$ROOT/test/toml-normalize.awk" "$scalar_parent" >/dev/null 2>&1; then
+  fail "TOML normalizer accepted a table beneath a scalar"
+fi
+assertions=$((assertions + 6))
 
 # --- free-space guard
 DOTS_UPDATE_MIN_FREE_KB=1 "$ROOT/bin/dots-update-requires-free-space" ||
