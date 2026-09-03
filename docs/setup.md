@@ -11,9 +11,13 @@ framework supplies completion for more commands.
 ### Bash completion framework
 
 Dots supplies completion for its nested commands. Dots also uses mise to
-install the `bash-completion` release from GitHub. This framework supplies
-completion for commands such as Git and tmux. The interactive `~/.bashrc`
-loads the mise installation first.
+install the latest upstream `bash-completion` release from GitHub. This
+framework supplies completion for commands such as Git and tmux. The
+interactive `~/.bashrc` gives the mise installation precedence, including when
+a system framework is already loaded.
+
+The loader honors `MISE_DATA_DIR`. If this variable is not set, the loader uses
+the standard mise data directory below `XDG_DATA_HOME` or `~/.local/share`.
 
 If the mise installation is not available, `~/.bashrc` searches for a system
 installation. It searches standard system locations and the prefixes in
