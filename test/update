@@ -763,11 +763,11 @@ out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update")
 assert_contains "$out" "Update complete." "pipeline completes"
 assert_contains "$out" "stub mise install" "mise sync ran"
 mapfile -t mise_update_order <"$HOME/mise-update-order"
-[[ ${mise_update_order[0]:-} == \
+[[ ${mise_update_order[0]:-} == "install" ]] ||
+  fail "mise install did not run before migrations"
+[[ ${mise_update_order[3]:-} == \
   "use --global github:scop/bash-completion[bin_path=completions,strip_components=1]@latest" ]] ||
-  fail "Bash completion migration did not run before mise install"
-[[ ${mise_update_order[1]:-} == "install" ]] ||
-  fail "mise install did not follow the Bash completion migration"
+  fail "Bash completion migration did not run after the mise update"
 [[ -f "$HOME/.local/state/dots/update.log" ]] || fail "update transcript missing"
 grep -q "Update complete." "$HOME/.local/state/dots/update.log" || fail "transcript incomplete"
 grep -q "recorder flush complete" "$HOME/.local/state/dots/update.log" || fail "terminal sidecar preceded recorder flush"

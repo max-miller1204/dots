@@ -24,9 +24,9 @@ dots-update
   ├─ converge dots runtime
   │    ├─ stable: verify, stage, and atomically activate the latest release
   │    └─ developer: run git pull --ff-only only in a clean checkout
-  ├─ dots-migrate                      run pending migrations
   ├─ mise install and upgrade          synchronize tools with the manifest
   ├─ mise self-update                  update the standalone mise binary
+  ├─ dots-migrate                      run pending migrations
   ├─ dots-hook post-update             run user hooks and aggregate failures
   ├─ dots-update-analyze-logs          report known failure signatures
   └─ dots-update-restart               report restart-*-required markers
