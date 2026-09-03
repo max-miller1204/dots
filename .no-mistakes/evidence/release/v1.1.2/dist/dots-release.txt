@@ -1,0 +1,4 @@
+dots-release-v1
+version=1.1.2
+archive=dots-1.1.2.tar.gz
+sha256=f0023ed81ca2fae05170cb200277b633c7ea515c74192c9d3f9fd99bef6ed4ac

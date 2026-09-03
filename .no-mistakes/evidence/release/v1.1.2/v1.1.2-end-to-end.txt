@@ -1,0 +1,31 @@
+Built /Users/maxmiller/.no-mistakes/evidence/01M1K239H7SXQRWWNQD8PB7CTS/dist/dots-1.1.2.tar.gz
+Built /Users/maxmiller/.no-mistakes/evidence/01M1K239H7SXQRWWNQD8PB7CTS/dist/install.sh
+Built /Users/maxmiller/.no-mistakes/evidence/01M1K239H7SXQRWWNQD8PB7CTS/dist/SHA256SUMS
+Built /Users/maxmiller/.no-mistakes/evidence/01M1K239H7SXQRWWNQD8PB7CTS/dist/dots-release.txt
+Downloading dots 1.1.2...
+Installing dots 1.1.2...
+
+=== dots install run: Thu Sep  3 03:21:19 EDT 2026 ===
+Installing dots from /Users/maxmiller/.no-mistakes/evidence/01M1K239H7SXQRWWNQD8PB7CTS/home/.local/share/dots/current
+Recorded runtime location in ~/.config/dots/path
+Seeding mise config into ~/.config...
+Installing packages...
+Seeding configs into ~/.config...
+No macOS defaults applied (edit install/config/macos.sh to add your own).
+Git identity is not set. Configure it in your live user config:
+  git config --global user.name "Your Name"
+  git config --global user.email "you@example.com"
+Theme set to tokyo-night.
+Generated files live in /Users/maxmiller/.no-mistakes/evidence/01M1K239H7SXQRWWNQD8PB7CTS/home/.local/state/dots/current/theme: point your apps' configs there.
+
+Done. Open a new terminal (or run: exec "$SHELL" -l), then try: dots
+dots 1.1.2 (stable)
+dots-1.1.2.tar.gz: OK
+install.sh: OK
+dots-release-v1
+version=1.1.2
+archive=dots-1.1.2.tar.gz
+sha256=f0023ed81ca2fae05170cb200277b633c7ea515c74192c9d3f9fd99bef6ed4ac
+Release tag v1.1.1 does not match committed version 1.1.2.
+Expected rejection confirms only matching tag v1.1.2 can build this commit.
+Release asset set: SHA256SUMS dots-1.1.2.tar.gz dots-release.txt install.sh
