@@ -5,10 +5,7 @@
 
 set -eo pipefail
 
-SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
-DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd -P)
-if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"; fi
+source "${BASH_SOURCE[0]%/*}/../install/helpers/runtime.sh"
 source "$DOTS_PATH/install/helpers/files.sh"
 source "$DOTS_PATH/install/helpers/releases.sh"
 

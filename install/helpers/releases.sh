@@ -51,17 +51,21 @@ dots_release_read_one_line() { # read_one_line <regular-file>
 }
 
 dots_release_configured_path() {
-  local configured
+  local configured path_file
 
-  configured=$(dots_release_read_one_line "$(_dots_release_path_file)") || return 1
+  path_file=$(_dots_release_path_file)
+  dots_file_assert_safe_parents "$path_file" "$HOME" >/dev/null 2>&1 || return 1
+  configured=$(dots_release_read_one_line "$path_file") || return 1
   [[ $configured == /* && $configured != *$'\n'* && $configured != *:* ]] || return 1
   printf '%s\n' "$configured"
 }
 
 dots_release_source_path() {
-  local source_path
+  local source_path source_file
 
-  source_path=$(dots_release_read_one_line "$(_dots_release_source_file)") || return 1
+  source_file=$(_dots_release_source_file)
+  dots_file_assert_safe_parents "$source_file" "$HOME" >/dev/null 2>&1 || return 1
+  source_path=$(dots_release_read_one_line "$source_file") || return 1
   [[ $source_path == /* && $source_path != *$'\n'* && $source_path != *:* ]] || return 1
   printf '%s\n' "$source_path"
 }
@@ -76,11 +80,7 @@ dots_release_lock_fd_valid() {
   local lock=${DOTS_UPDATE_LOCK:-$HOME/.local/state/dots/update.lock}
 
   [[ ${DOTS_UPDATE_LOCK_PID:-} == "$$" ]] || return 1
-  { true >&9; } 2>/dev/null || return 1
-  command -v flock >/dev/null 2>&1 || return 1
-  dots_file_assert_safe_parents "$lock" "$HOME" >/dev/null 2>&1 || return 1
-  dots_file_path_matches_fd "$lock" 9 >/dev/null 2>&1 || return 1
-  flock -n 9
+  dots_lock_fd9_valid "$lock" "$HOME"
 }
 
 dots_release_write_path() { # write_path <path>
@@ -120,9 +120,8 @@ dots_release_write_source_path() { # write_source_path <checkout>
   rm -f "$source"
 }
 
-dots_release_assert_store() {
-  local marker="$DOTS_RELEASE_HOME/.dots-release-store" marker_source
-  local -a occupants=() marker_lines=()
+dots_release_store_paths_safe() {
+  local path
 
   dots_file_assert_safe_parents "$DOTS_RELEASES_DIR/release" "$HOME" || return 1
   for path in "$DOTS_RELEASE_HOME" "$DOTS_RELEASES_DIR"; do
@@ -131,6 +130,13 @@ dots_release_assert_store() {
       return 1
     fi
   done
+}
+
+dots_release_assert_store() {
+  local marker="$DOTS_RELEASE_HOME/.dots-release-store" marker_source
+  local -a occupants=() marker_lines=()
+
+  dots_release_store_paths_safe || return 1
   if [[ -f $marker && ! -L $marker ]]; then
     mapfile -t marker_lines <"$marker"
     if ((${#marker_lines[@]} != 1)) || [[ ${marker_lines[0]} != "dots-release-store-v1" ]]; then
@@ -195,6 +201,7 @@ dots_release_reconcile_pointers() {
   local actual_current="-" actual_previous="-" desired_previous release_version
   local -a lines=()
 
+  dots_release_store_paths_safe || return 1
   if [[ ! -e $transaction && ! -L $transaction ]]; then
     for pointer in "$DOTS_RELEASE_CURRENT" "$DOTS_RELEASE_PREVIOUS"; do
       if _dots_release_pointer_is_dangling "$pointer"; then
@@ -448,7 +455,7 @@ dots_release_verify_installed() { # verify_installed <release-dir> <version>
     return 1
   fi
   rm -f "$actual_inventory"
-  writable=$(find "$release_dir" -perm -200 -print) || return 1
+  writable=$(find "$release_dir" \( -perm -200 -o -perm -020 -o -perm -002 \) -print) || return 1
   [[ -z $writable ]] || {
     echo "Dots release contains writable entries: $version" >&2
     return 1
@@ -457,7 +464,6 @@ dots_release_verify_installed() { # verify_installed <release-dir> <version>
 
 dots_release_install_archive() { # install_archive <version> <archive> <sha256>
   local version=$1 archive=$2 expected_sha=$3 actual_sha stage extracted ready final marker candidate
-  local entry
 
   dots_release_validate_version "$version" || {
     echo "Invalid dots release version: $version" >&2
@@ -472,7 +478,7 @@ dots_release_install_archive() { # install_archive <version> <archive> <sha256>
     return 1
   }
   actual_sha=$(dots_release_sha256 "$archive") || return 1
-  [[ ${actual_sha,,} == ${expected_sha,,} ]] || {
+  [[ ${actual_sha,,} == "${expected_sha,,}" ]] || {
     echo "Checksum verification failed for dots $version" >&2
     return 1
   }
@@ -498,22 +504,15 @@ dots_release_install_archive() { # install_archive <version> <archive> <sha256>
     fi
   done
 
-  if ! dots_archive_regular_entries_only "$archive"; then
-    if [[ $DOTS_ARCHIVE_VALIDATION_ERROR == "unreadable" ]]; then
-      echo "Cannot read dots release archive: $archive" >&2
-    else
-      echo "Release archive contains a link or special entry." >&2
-    fi
+  if ! dots_archive_validate "$archive" "dots-$version"; then
+    case "$DOTS_ARCHIVE_VALIDATION_ERROR" in
+      unreadable) echo "Cannot read dots release archive: $archive" >&2 ;;
+      special-entry) echo "Release archive contains a link or special entry." >&2 ;;
+      missing-root) echo "Release archive is empty." >&2 ;;
+      unsafe-path) echo "Unsafe path in dots release archive: $DOTS_ARCHIVE_VALIDATION_ENTRY" >&2 ;;
+    esac
     return 1
   fi
-  while IFS= read -r entry; do
-    [[ -n $entry ]] || continue
-    if [[ $entry == /* || $entry == ".." || $entry == ../* || $entry == */../* || $entry == */.. ||
-          $entry != "dots-$version" && $entry != "dots-$version/"* ]]; then
-      echo "Unsafe path in dots release archive: $entry" >&2
-      return 1
-    fi
-  done < <(tar -tzf "$archive")
 
   stage=$(mktemp -d "$DOTS_RELEASES_DIR/.staging-$version.XXXXXX") || return 1
   if ! tar -xzf "$archive" -C "$stage"; then
@@ -557,6 +556,60 @@ dots_release_install_archive() { # install_archive <version> <archive> <sha256>
     rm -rf "$ready"
     return 1
   fi
+}
+
+dots_release_prune() {
+  local current="" previous="" release version
+  local removed=0 skipped=0
+  local -a releases=()
+
+  dots_release_lock_fd_valid || {
+    echo "Dots release pruning requires the update lock." >&2
+    return 1
+  }
+  dots_release_assert_store || return 1
+  dots_release_reconcile_pointers || return 1
+  current=$(_dots_release_pointer_version "$DOTS_RELEASE_CURRENT" 2>/dev/null) || {
+    if [[ -e $DOTS_RELEASE_CURRENT || -L $DOTS_RELEASE_CURRENT ]]; then
+      echo "Refusing unsafe dots release pointer: $DOTS_RELEASE_CURRENT" >&2
+      return 1
+    fi
+    current=""
+  }
+  previous=$(_dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS" 2>/dev/null) || {
+    if [[ -e $DOTS_RELEASE_PREVIOUS || -L $DOTS_RELEASE_PREVIOUS ]]; then
+      echo "Refusing unsafe dots release pointer: $DOTS_RELEASE_PREVIOUS" >&2
+      return 1
+    fi
+    previous=""
+  }
+
+  shopt -s nullglob dotglob
+  releases=("$DOTS_RELEASES_DIR"/*)
+  shopt -u nullglob dotglob
+  for release in "${releases[@]}"; do
+    version=${release##*/}
+    if ! dots_release_validate_version "$version" || [[ ! -d $release || -L $release ]]; then
+      printf 'Skipped invalid release entry: %q\n' "$version" >&2
+      skipped=$((skipped + 1))
+      continue
+    fi
+    if [[ $version == "$current" || $version == "$previous" ]]; then
+      continue
+    fi
+    if ! dots_release_verify_installed "$release" "$version" >/dev/null 2>&1; then
+      printf 'Skipped invalid release entry: %q\n' "$version" >&2
+      skipped=$((skipped + 1))
+      continue
+    fi
+    if ! chmod -R u+w "$release" || ! rm -rf -- "$release"; then
+      echo "Could not remove dots release: $version" >&2
+      return 1
+    fi
+    echo "Removed dots release $version."
+    removed=$((removed + 1))
+  done
+  echo "Pruned $removed release(s); skipped $skipped invalid entry(s)."
 }
 
 dots_release_parse_manifest() { # parse_manifest <file>; sets DOTS_LATEST_*

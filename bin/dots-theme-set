@@ -6,12 +6,7 @@
 
 set -euo pipefail
 
-SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
-DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
-if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
-  exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"
-fi
+source "${BASH_SOURCE[0]%/*}/../install/helpers/runtime.sh"
 source "$DOTS_PATH/install/helpers/files.sh"
 source "$DOTS_PATH/install/helpers/theme-generation.sh"
 
@@ -62,19 +57,7 @@ if [[ -L $GENERATIONS_DIR || ! -d $GENERATIONS_DIR ]]; then
   exit 1
 fi
 "$DOTS_PATH/bin/dots-ensure-flock"
-if [[ -L $THEME_LOCK || ( -e $THEME_LOCK && ! -f $THEME_LOCK ) ]]; then
-  echo "Refusing unsafe theme lock path: $THEME_LOCK" >&2
-  exit 1
-fi
-exec 9>>"$THEME_LOCK"
-if [[ -L $THEME_LOCK || ! -f $THEME_LOCK ]]; then
-  echo "Theme lock path changed during open: $THEME_LOCK" >&2
-  exit 1
-fi
-if ! dots_file_path_matches_fd "$THEME_LOCK" 9; then
-  echo "Theme lock path changed during open: $THEME_LOCK" >&2
-  exit 1
-fi
+dots_lock_open_fd9 "$THEME_LOCK" Theme
 flock 9
 
 pointer_target=""

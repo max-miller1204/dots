@@ -12,6 +12,7 @@ Run `dots` for the complete generated command listing or `dots help <group>` for
 | `dots version install [version]` | Install and activate a release, then converge tools and migrations |
 | `dots version adopt` | Move a checkout-backed install to stable and converge it |
 | `dots version list` | List releases (`*` current, `-` previous, `!` invalid) |
+| `dots version prune [--force]` | Remove inactive verified releases, preserving current and previous |
 | `dots version rollback` | Switch the runtime back to the previous release |
 | `dots dev link <checkout>` | Use an editable checkout as the active runtime |
 | `dots dev unlink` | Return to the current stable release |

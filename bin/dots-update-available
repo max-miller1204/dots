@@ -11,34 +11,15 @@
 
 set -o pipefail
 
-SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-DOTS_PATH=$("$SELF_DIR/dots-path-resolve") || exit 2
-DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd) || exit 2
-if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
-  exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"
-fi
+DOTS_RUNTIME_ERROR_STATUS=2
+source "${BASH_SOURCE[0]%/*}/../install/helpers/runtime.sh"
 source "$DOTS_PATH/install/helpers/files.sh"
 source "$DOTS_PATH/install/helpers/releases.sh"
 UPDATE_LOCK="${DOTS_UPDATE_LOCK:-$HOME/.local/state/dots/update.lock}"
 
 "$SELF_DIR/dots-ensure-flock" || exit 2
-dots_file_assert_safe_parents "$UPDATE_LOCK" "$HOME" || exit 2
-mkdir -p "${UPDATE_LOCK%/*}"
-dots_file_assert_safe_parents "$UPDATE_LOCK" "$HOME" || exit 2
-if [[ -L $UPDATE_LOCK || ( -e $UPDATE_LOCK && ! -f $UPDATE_LOCK ) ]]; then
-  echo "Cannot check updates with an unsafe lock path: $UPDATE_LOCK" >&2
-  exit 2
-fi
-exec 8>>"$UPDATE_LOCK"
-if [[ -L $UPDATE_LOCK || ! -f $UPDATE_LOCK ]]; then
-  echo "Update lock path changed during open: $UPDATE_LOCK" >&2
-  exit 2
-fi
-if ! dots_file_path_matches_fd "$UPDATE_LOCK" 8; then
-  echo "Update lock path changed during open: $UPDATE_LOCK" >&2
-  exit 2
-fi
-if ! flock -n 8; then
+dots_lock_open_fd9 "$UPDATE_LOCK" Update || exit 2
+if ! flock -n 9; then
   echo "Cannot check updates while dots update is running." >&2
   exit 2
 fi

@@ -66,6 +66,43 @@ dots_file_path_matches_fd() { # dots_file_path_matches_fd <path> <fd-number>
   [[ $path_id == "$fd_id" ]]
 }
 
+# Safely create and open a lock file on the runtime's standard inherited fd.
+# The caller still chooses blocking or nonblocking flock behavior.
+dots_lock_open_fd9() { # dots_lock_open_fd9 <path> <label> [ownership-root]
+  local path=$1 label=$2 root=${3:-$HOME} parent
+
+  dots_file_assert_safe_parents "$path" "$root" || return 1
+  parent=${path%/*}
+  [[ -n $parent ]] || parent=/
+  mkdir -p "$parent" || return 1
+  dots_file_assert_safe_parents "$path" "$root" || return 1
+  if [[ -L $path || ( -e $path && ! -f $path ) ]]; then
+    echo "Refusing unsafe $label lock path: $path" >&2
+    return 1
+  fi
+
+  exec 9>>"$path" || return 1
+  if [[ -L $path || ! -f $path ]] || ! dots_file_path_matches_fd "$path" 9; then
+    echo "$label lock path changed during open: $path" >&2
+    exec 9>&-
+    return 1
+  fi
+}
+
+# Verify that fd 9 is the still-open, currently held lock represented by path.
+# Re-taking flock on an inherited open file description succeeds without
+# weakening the lock and distinguishes it from an unrelated writable fd.
+dots_lock_fd9_valid() { # dots_lock_fd9_valid <path> [ownership-root]
+  local path=$1 root=${2:-$HOME}
+
+  { true >&9; } 2>/dev/null || return 1
+  command -v flock >/dev/null 2>&1 || return 1
+  dots_file_assert_safe_parents "$path" "$root" >/dev/null 2>&1 || return 1
+  [[ ! -L $path && -f $path ]] || return 1
+  dots_file_path_matches_fd "$path" 9 >/dev/null 2>&1 || return 1
+  flock -n 9
+}
+
 # Enumerate shipped config files relative to their config root. Keep the
 # NUL-delimited contract so names containing whitespace or newlines are safe.
 dots_config_find_files() { # dots_config_find_files <config-root>

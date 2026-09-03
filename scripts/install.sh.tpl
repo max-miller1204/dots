@@ -4,6 +4,8 @@
 # This bootstrap intentionally stays compatible with macOS's system Bash 3.2;
 # the packaged installer establishes the modern command runtime it needs.
 
+@DOTS_ARCHIVE_VALIDATOR@
+
 main() {
   set -eo pipefail
 
@@ -12,8 +14,7 @@ main() {
   local expected_sha='@DOTS_RELEASE_SHA256@'
   local release_base_url=${DOTS_RELEASE_BASE_URL:-https://github.com/max-miller1204/dots/releases}
   local archive_url=${DOTS_RELEASE_ARCHIVE_URL:-$release_base_url/download/v$release_version/$archive_name}
-  local required_command temporary_dir archive actual_sha verbose_listing
-  local listing_line entry_type archive_listing archive_root entry payload required_path
+  local required_command temporary_dir archive actual_sha archive_root payload required_path
 
   if (($#)); then
     echo "Usage: install.sh" >&2
@@ -53,44 +54,16 @@ main() {
     exit 1
   fi
 
-  verbose_listing=$(tar -tvzf "$archive") || {
-    echo "Cannot read the dots release archive." >&2
-    exit 1
-  }
-  while IFS= read -r listing_line; do
-    [[ -n $listing_line ]] || continue
-    entry_type=${listing_line:0:1}
-    if [[ $entry_type != "-" && $entry_type != "d" ]]; then
-      echo "The dots release archive contains a link or special entry." >&2
-      exit 1
-    fi
-  done <<LISTING
-$verbose_listing
-LISTING
-
-  archive_listing=$(tar -tzf "$archive") || {
-    echo "Cannot list the dots release archive." >&2
-    exit 1
-  }
   archive_root="dots-$release_version"
-  while IFS= read -r entry; do
-    [[ -n $entry ]] || continue
-    case "$entry" in
-      "$archive_root" | "$archive_root/"*) ;;
-      *)
-        echo "Unsafe path in dots release archive: $entry" >&2
-        exit 1
-        ;;
+  if ! dots_archive_validate "$archive" "$archive_root"; then
+    case "$DOTS_ARCHIVE_VALIDATION_ERROR" in
+      unreadable) echo "Cannot read the dots release archive." >&2 ;;
+      special-entry) echo "The dots release archive contains a link or special entry." >&2 ;;
+      missing-root) echo "The dots release archive is empty." >&2 ;;
+      unsafe-path) echo "Unsafe path in dots release archive: $DOTS_ARCHIVE_VALIDATION_ENTRY" >&2 ;;
     esac
-    case "/$entry/" in
-      */../*)
-        echo "Unsafe path in dots release archive: $entry" >&2
-        exit 1
-        ;;
-    esac
-  done <<LISTING
-$archive_listing
-LISTING
+    exit 1
+  fi
 
   tar -xzf "$archive" -C "$temporary_dir"
   payload="$temporary_dir/$archive_root"

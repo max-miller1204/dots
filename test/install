@@ -138,8 +138,8 @@ ordering_home="$SANDBOX/ordering-home"
 ordering_state="$ordering_home/.local/state/dots"
 mkdir -p "$ordering_state/done" "$ordering_state/migrations"
 : >"$ordering_state/done/install"
-cp "$ROOT/test/fixtures/1788046742/bashrc.old" "$ordering_home/.bashrc"
-cp "$ROOT/test/fixtures/1788046742/zshrc.old" "$ordering_home/.zshrc"
+cp "$ROOT/migrations/fixtures/1788046742/bashrc.old" "$ordering_home/.bashrc"
+cp "$ROOT/migrations/fixtures/1788046742/zshrc.old" "$ordering_home/.zshrc"
 for migration in "$repo"/migrations/*.sh; do
   [[ ${migration##*/} == "1788046742.sh" ]] && continue
   : >"$ordering_state/migrations/${migration##*/}"

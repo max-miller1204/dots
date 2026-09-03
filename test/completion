@@ -46,6 +46,10 @@ excludes_line "$sync_out" btop "sync completion hides internal integrations"
 migrate_out=$("$helper" migrate)
 contains_line "$migrate_out" --pending "metadata option is completed"
 contains_line "$migrate_out" --check "documented option alias is completed"
+version_out=$("$helper" version)
+contains_line "$version_out" prune "version prune command is completed"
+prune_out=$("$helper" version prune)
+contains_line "$prune_out" --force "version prune force option is completed"
 
 mkdir -p "$HOME/.config/dots/themes/user-theme" "$HOME/.config/dots/themes/Invalid_Theme"
 theme_values=$("$helper" theme set)
@@ -67,6 +71,15 @@ printf 'invalid\n' >"$HOME/.config/completion-test/invalid..name"
 import_values=$("$helper" config import)
 contains_line "$import_values" completion-test/valid "live config path is completed"
 excludes_line "$import_values" completion-test/invalid..name "rejected config path is not completed"
+newline_config=$'completion-test/newline\nname'
+printf 'valid\n' >"$HOME/.config/$newline_config"
+mapfile -d '' -t nul_import_values < <("$helper" --null config import)
+newline_found=""
+for completion_value in "${nul_import_values[@]}"; do
+  [[ $completion_value == "$newline_config" ]] && newline_found=1
+done
+[[ -n $newline_found ]] || fail "NUL-delimited completion dropped a newline-bearing config path"
+assertions=$((assertions + 1))
 
 # A checkout path containing spaces exercises arbitrary nested commands, enum
 # metadata, options, and hidden filtering without changing the real bin tree.
@@ -74,6 +87,7 @@ fixture_repo="$SANDBOX/completion repo"
 mkdir -p "$fixture_repo/bin" "$fixture_repo/install/helpers" "$fixture_repo/themes/repo-theme"
 cp "$helper" "$fixture_repo/bin/dots-completion-candidates"
 cp "$ROOT/install/helpers/metadata.sh" "$fixture_repo/install/helpers/metadata.sh"
+cp "$ROOT/install/helpers/files.sh" "$fixture_repo/install/helpers/files.sh"
 cat >"$fixture_repo/bin/dots-alpha" <<'EOF'
 #!/usr/bin/env bash
 # dots:args=<one|two> [--force]

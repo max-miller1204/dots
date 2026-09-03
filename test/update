@@ -49,7 +49,8 @@ mkdir -p "$flock_repair_repo/bin" "$flock_repair_repo/install/config" \
   "$flock_repair_repo/install/helpers" "$flock_repair_bin" "$flock_repair_home"
 cp "$ROOT/bin/dots-update-lock" "$flock_repair_repo/bin/dots-update-lock"
 cp "$ROOT/install/config/flock.sh" "$flock_repair_repo/install/config/flock.sh"
-cp "$ROOT/install/helpers/files.sh" "$flock_repair_repo/install/helpers/files.sh"
+cp "$ROOT/install/helpers/files.sh" "$ROOT/install/helpers/runtime.sh" \
+  "$flock_repair_repo/install/helpers/"
 ln -s "$(command -v bash)" "$flock_repair_bin/bash"
 ln -s "$(command -v dirname)" "$flock_repair_bin/dirname"
 ln -s "$(command -v ln)" "$flock_repair_bin/ln"
@@ -85,17 +86,19 @@ assertions=$((assertions + 3))
 # --- adoption migration: missing defaults are installed, user shell files are
 # preserved, Git defaults are merged, and mise receives the shipped tool set.
 printf '# custom shell\n' >"$HOME/.bashrc"
+printf '# custom zsh\n' >"$HOME/.zshrc"
 migration_out=$(PATH="$SANDBOX/stub:$PATH" \
   GIT_CONFIG_GLOBAL="$HOME/.config/git/config" \
   DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788046742.sh" 2>&1)
 [[ $(cat "$HOME/.bashrc") == "# custom shell" ]] || fail "migration replaced a customized bashrc"
+[[ $(cat "$HOME/.zshrc") == "# custom zsh" ]] || fail "migration replaced a customized zshrc"
 [[ ! -e "$HOME/.config/dots/hooks/theme-set.d/10-sync-app-themes" ]] || fail "migration installed built-in logic as a user hook"
 [[ -f "$HOME/.config/ghostty/config" ]] || fail "migration did not install missing app config"
 [[ $(GIT_CONFIG_GLOBAL="$HOME/.config/git/config" git config --global --get diff.algorithm) == "histogram" ]] || fail "migration did not merge Git defaults"
 assert_contains "$migration_out" "stub mise use --global" "migration merges mise tool manifest"
-assertions=$((assertions + 4))
+assertions=$((assertions + 5))
 
-adoption_fixtures="$ROOT/test/fixtures/1788046742"
+adoption_fixtures="$ROOT/migrations/fixtures/1788046742"
 adoption_link_home="$SANDBOX/adoption-link-home"
 adoption_link_targets="$SANDBOX/adoption-link-targets"
 mkdir -p "$adoption_link_home" "$adoption_link_targets"
@@ -121,9 +124,12 @@ mkdir -p "$retry_repo/migrations" "$retry_repo/bin" "$retry_repo/install/helpers
   "$retry_home" "$SANDBOX/failing-stub"
 cp -R "$ROOT/config" "$ROOT/default" "$retry_repo/"
 cp "$ROOT/migrations/1788046742.sh" "$retry_repo/migrations/1788046742.sh"
+mkdir -p "$retry_repo/migrations/fixtures"
+cp -R "$ROOT/migrations/fixtures/1788046742" "$retry_repo/migrations/fixtures/"
 cp "$ROOT/bin/dots-migrate" "$ROOT/bin/dots-path-resolve" "$ROOT/bin/dots-ensure-flock" \
   "$ROOT/bin/dots-update-restart" "$retry_repo/bin/"
-cp "$ROOT/install/helpers/files.sh" "$retry_repo/install/helpers/files.sh"
+cp "$ROOT/install/helpers/files.sh" "$ROOT/install/helpers/runtime.sh" \
+  "$retry_repo/install/helpers/"
 cat >"$SANDBOX/failing-stub/mise" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$HOME/mise-retry-calls"
@@ -150,6 +156,7 @@ cmp -s "$retry_home/.bashrc" "$retry_repo/default/bashrc" ||
 missing_source_home="$SANDBOX/missing-source-home"
 missing_source_state="$missing_source_home/.local/state/dots/migrations"
 mkdir -p "$missing_source_home"
+cp "$adoption_fixtures/bashrc.old" "$missing_source_home/.bashrc"
 rm "$retry_repo/config/ghostty/config"
 if HOME="$missing_source_home" PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$retry_repo" \
   DOTS_MIGRATION_STATE="$missing_source_state" GIT_CONFIG_GLOBAL="$missing_source_home/gitconfig" \
@@ -158,7 +165,34 @@ if HOME="$missing_source_home" PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$retry_repo
 fi
 [[ ! -e $missing_source_state/1788046742.sh ]] ||
   fail "adoption migration with missing source was marked complete"
-assertions=$((assertions + 8))
+[[ -f $missing_source_home/.config/tmux/tmux.conf ]] ||
+  fail "one missing config prevented later configs from being installed"
+cmp -s "$missing_source_home/.bashrc" "$retry_repo/default/bashrc" ||
+  fail "one missing config prevented later shell migration work"
+assertions=$((assertions + 10))
+
+# A machine temporarily missing Git keeps the adoption migration pending while
+# later independent shell work still completes.
+no_git_bin="$SANDBOX/no-git-bin"
+no_git_home="$SANDBOX/no-git-home"
+mkdir -p "$no_git_bin" "$no_git_home"
+for required_command in bash cmp cp dirname env mkdir mktemp mv rm uname; do
+  ln -s "$(command -v "$required_command")" "$no_git_bin/$required_command"
+done
+cat >"$no_git_bin/mise" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$no_git_bin/mise"
+cp "$adoption_fixtures/bashrc.old" "$no_git_home/.bashrc"
+rc=0
+out=$(HOME="$no_git_home" PATH="$no_git_bin" DOTS_PATH="$ROOT" \
+  "$BASH" "$ROOT/migrations/1788046742.sh" 2>&1) || rc=$?
+((rc != 0)) || fail "adoption migration succeeded without Git"
+assert_contains "$out" "git is required" "adoption migration reports missing Git"
+cmp -s "$no_git_home/.bashrc" "$ROOT/default/bashrc" ||
+  fail "missing Git prevented later shell migration work"
+assertions=$((assertions + 3))
 
 # --- durability migration: executable path config and legacy integration
 # plumbing are retired without executing them; namespaced links replace only
@@ -197,9 +231,31 @@ HOME="$durable_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788049840.sh" >/d
 [[ $(jq -r '.theme' "$durable_home/.pi/agent/settings.json") == "user-choice" ]] || fail "durability migration replaced Pi preference"
 assertions=$((assertions + 9))
 
+# Historical comparison fixtures preserve the exact bytes that shipped in the
+# releases these migrations repair. Keep this oracle independent of the files.
+while read -r expected_hash fixture_path; do
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual_hash=$(sha256sum "$ROOT/migrations/fixtures/$fixture_path" | awk '{ print $1 }')
+  else
+    actual_hash=$(shasum -a 256 "$ROOT/migrations/fixtures/$fixture_path" | awk '{ print $1 }')
+  fi
+  [[ $actual_hash == "$expected_hash" ]] || fail "historical migration fixture changed: $fixture_path"
+done <<'FIXTURE_HASHES'
+c4d6a9915f21f7a4053433cabe1c520899b4c77843b7621c8a78d010fc29cd10 1788046742/bashrc.old
+1451062f6508004bdbddcc7d01c15e8e90d059adddc717644f5aee54d130345e 1788046742/zshrc.old
+1df0274dfb3aa0fc185db91134806d5f9a58f45ebbf63bde7533059b65b04da4 1788051792/bashrc.41d3229
+3031b42ffd15bf80246b3fe80f3f101a5270acb6dca9dba50d43063795b6ef9a 1788051792/bashrc.intermediate
+29a35dff597821a19960102ec7cad67bcdf6209da15e0f1ce1a86748ca3341a0 1788051792/bashrc.old
+b17c9b5f096fc125e97050e359171c6011d6b3c7d7e9ac28f630e75b4d4bb9db 1788051792/starship.old
+40bbe06f4227062b5c06e575669b747dd939be76312637ee7237a1b2090707e0 1788051792/zshrc.41d3229
+aa636273d55583af8b426c116637f58e13b607d7cf3534d6d1482bf0326a35c0 1788051792/zshrc.intermediate
+958775ede0aeb25006633178e5456e22dba135f458d99ebaf3f9fadd5cd4ec70 1788051792/zshrc.old
+FIXTURE_HASHES
+assertions=$((assertions + 9))
+
 # --- final durability migration updates only the exact previously shipped
 # shell and Starship files, preserving customized copies.
-final_fixtures="$ROOT/test/fixtures/1788051792"
+final_fixtures="$ROOT/migrations/fixtures/1788051792"
 final_home="$SANDBOX/final-migration-home"
 mkdir -p "$final_home/.config"
 cp "$final_fixtures/bashrc.41d3229" "$final_home/.bashrc"
@@ -210,15 +266,30 @@ cmp -s "$final_home/.bashrc" "$ROOT/default/bashrc" || fail "final migration did
 cmp -s "$final_home/.zshrc" "$ROOT/default/zshrc" || fail "final migration did not update stock zshrc"
 cmp -s "$final_home/.config/starship.toml" "$ROOT/config/starship.toml" || fail "final migration did not update stock Starship"
 [[ -f "$final_home/.local/state/dots/restart-shell-required" ]] || fail "final shell migration left no restart marker"
+for historical_variant in old intermediate; do
+  variant_home="$SANDBOX/final-migration-$historical_variant-home"
+  mkdir -p "$variant_home"
+  cp "$final_fixtures/bashrc.$historical_variant" "$variant_home/.bashrc"
+  cp "$final_fixtures/zshrc.$historical_variant" "$variant_home/.zshrc"
+  HOME="$variant_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788051792.sh" >/dev/null
+  cmp -s "$variant_home/.bashrc" "$ROOT/default/bashrc" ||
+    fail "final migration did not update $historical_variant bashrc"
+  cmp -s "$variant_home/.zshrc" "$ROOT/default/zshrc" ||
+    fail "final migration did not update $historical_variant zshrc"
+done
 custom_home="$SANDBOX/custom-final-migration-home"
-mkdir -p "$custom_home"
+mkdir -p "$custom_home/.config"
 cp "$final_fixtures/bashrc.41d3229" "$custom_home/.bashrc"
 cp "$final_fixtures/zshrc.41d3229" "$custom_home/.zshrc"
+cp "$final_fixtures/starship.old" "$custom_home/.config/starship.toml"
 printf '# custom bash\n' >>"$custom_home/.bashrc"
 printf '# custom zsh\n' >>"$custom_home/.zshrc"
+printf '# custom starship\n' >>"$custom_home/.config/starship.toml"
 HOME="$custom_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788051792.sh" >/dev/null
 [[ $(tail -1 "$custom_home/.bashrc") == "# custom bash" ]] || fail "final migration replaced customized bashrc"
 [[ $(tail -1 "$custom_home/.zshrc") == "# custom zsh" ]] || fail "final migration replaced customized zshrc"
+[[ $(tail -1 "$custom_home/.config/starship.toml") == "# custom starship" ]] ||
+  fail "final migration replaced customized Starship config"
 link_home="$SANDBOX/link-final-migration-home"
 link_targets="$SANDBOX/link-final-migration-targets"
 mkdir -p "$link_home/.config" "$link_targets"
@@ -235,7 +306,58 @@ HOME="$link_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1788051792.sh" >/dev/
 cmp -s "$link_targets/bashrc" "$final_fixtures/bashrc.41d3229" || fail "final migration altered a bashrc symlink target"
 cmp -s "$link_targets/zshrc" "$final_fixtures/zshrc.41d3229" || fail "final migration altered a zshrc symlink target"
 cmp -s "$link_targets/starship.toml" "$final_fixtures/starship.old" || fail "final migration altered a Starship symlink target"
-assertions=$((assertions + 12))
+assertions=$((assertions + 17))
+
+# The final migration adopts valid legacy theme generations, rejects foreign
+# pointers and invalid theme names, and re-renders a valid current theme.
+theme_migration_repo="$SANDBOX/theme-migration-repo"
+mkdir -p "$theme_migration_repo/install/helpers" \
+  "$theme_migration_repo/migrations/fixtures" "$theme_migration_repo/bin"
+cp "$ROOT/install/helpers/files.sh" "$ROOT/install/helpers/theme-generation.sh" \
+  "$theme_migration_repo/install/helpers/"
+cp -R "$ROOT/migrations/fixtures/1788051792" "$theme_migration_repo/migrations/fixtures/"
+cat >"$theme_migration_repo/bin/dots-theme-set" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$1" >"$HOME/theme-set-called"
+EOF
+chmod +x "$theme_migration_repo/bin/dots-theme-set"
+theme_migration_home="$SANDBOX/theme-migration-home"
+theme_state="$theme_migration_home/.local/state/dots"
+mkdir -p "$theme_state/theme-generations/generation.A1/theme" \
+  "$theme_state/theme-generations/recovery.B2/theme"
+printf 'nord\n' >"$theme_state/theme-generations/generation.A1/theme.name"
+printf 'rose-pine\n' >"$theme_state/theme-generations/recovery.B2/theme.name"
+ln -s theme-generations/generation.A1 "$theme_state/current"
+ln -s theme-generations/recovery.B2 "$theme_state/theme-previous"
+HOME="$theme_migration_home" DOTS_PATH="$theme_migration_repo" \
+  bash "$ROOT/migrations/1788051792.sh" >/dev/null
+for generation in generation.A1 recovery.B2; do
+  [[ $(cat "$theme_state/theme-generations/$generation/.dots-theme-generation") == \
+    "dots-theme-generation-v1" ]] || fail "final migration did not adopt $generation"
+done
+[[ $(cat "$theme_migration_home/theme-set-called") == "nord" ]] ||
+  fail "final migration did not re-render the current theme"
+foreign_pointer_home="$SANDBOX/foreign-theme-pointer-home"
+foreign_state="$foreign_pointer_home/.local/state/dots"
+mkdir -p "$foreign_state"
+ln -s ../../outside-theme "$foreign_state/current"
+if HOME="$foreign_pointer_home" DOTS_PATH="$theme_migration_repo" \
+  bash "$ROOT/migrations/1788051792.sh" >/dev/null 2>&1; then
+  fail "final migration accepted a foreign theme pointer"
+fi
+[[ -L $foreign_state/current ]] || fail "final migration replaced a foreign theme pointer"
+invalid_theme_home="$SANDBOX/invalid-current-theme-home"
+invalid_theme_state="$invalid_theme_home/.local/state/dots"
+mkdir -p "$invalid_theme_state/theme-generations/generation.C3/theme"
+printf '../bad\n' >"$invalid_theme_state/theme-generations/generation.C3/theme.name"
+ln -s theme-generations/generation.C3 "$invalid_theme_state/current"
+if HOME="$invalid_theme_home" DOTS_PATH="$theme_migration_repo" \
+  bash "$ROOT/migrations/1788051792.sh" >/dev/null 2>&1; then
+  fail "final migration accepted an invalid current theme name"
+fi
+[[ ! -e $invalid_theme_home/theme-set-called ]] ||
+  fail "final migration invoked theme rendering for an invalid theme name"
+assertions=$((assertions + 7))
 
 # --- virtualenv prompt migration updates only the exact stock Starship config.
 venv_fixture="$ROOT/test/fixtures/1788300252/starship.old"
@@ -263,18 +385,92 @@ cmp -s "$linked_venv_home/starship-target" "$venv_fixture" ||
   fail "virtualenv migration altered a Starship symlink target"
 assertions=$((assertions + 4))
 
-# --- newly published mise tool versions remain immediately eligible.
-python - "$ROOT/config/mise/config.toml" <<'PY' ||
-import sys
-import tomllib
+# --- newly published mise tool versions remain immediately eligible. Parse
+# the manifest into a normalized model without relying on provisioned tools.
+normalize_mise_toml() {
+  local file=$1 byte_dump
 
-with open(sys.argv[1], "rb") as config_file:
-  config = tomllib.load(config_file)
-if config.get("settings", {}).get("minimum_release_age") != "0s":
-  raise SystemExit(1)
-PY
+  byte_dump=$(LC_ALL=C od -An -v -t x1 "$file") || return
+  [[ ! $byte_dump =~ (^|[[:space:]])00($|[[:space:]]) ]] || return 1
+  iconv -f UTF-8 -t UTF-8 "$file" >/dev/null 2>&1 || return
+  LC_ALL=C awk -f "$ROOT/test/toml-normalize.awk" "$file"
+}
+normalized_mise="$SANDBOX/mise-config.normalized"
+if ! normalize_mise_toml "$ROOT/config/mise/config.toml" >"$normalized_mise"; then
+  fail "mise config is not valid supported TOML"
+fi
+declare -A mise_types mise_values
+while IFS=$'\t' read -r value_type value_path value; do
+  mise_types["$value_path"]=$value_type
+  mise_values["$value_path"]=$value
+done <"$normalized_mise"
+[[ ${mise_types[settings.minimum_release_age]:-} == "basic-string" &&
+  ${mise_values[settings.minimum_release_age]:-} == "0s" ]] ||
   fail "mise config lost the zero release-age default"
-assertions=$((assertions + 1))
+duplicate_table="$SANDBOX/duplicate-table.toml"
+printf '[settings]\nminimum_release_age = "0s"\n[settings]\nother = "value"\n' >"$duplicate_table"
+if normalize_mise_toml "$duplicate_table" >/dev/null 2>&1; then
+  fail "TOML normalizer accepted a duplicate table"
+fi
+duplicate_key="$SANDBOX/duplicate-key.toml"
+printf '[settings]\nminimum_release_age = "0s"\nminimum_release_age = "1s"\n' >"$duplicate_key"
+if normalize_mise_toml "$duplicate_key" >/dev/null 2>&1; then
+  fail "TOML normalizer accepted a duplicate key"
+fi
+scalar_then_table="$SANDBOX/scalar-then-table.toml"
+printf 'settings = "shadow"\n[settings]\nminimum_release_age = "0s"\n' >"$scalar_then_table"
+if normalize_mise_toml "$scalar_then_table" >/dev/null 2>&1; then
+  fail "TOML normalizer accepted a scalar followed by the same table"
+fi
+table_then_scalar="$SANDBOX/table-then-scalar.toml"
+printf '[settings.minimum_release_age]\nvalue = "0s"\n[settings]\nminimum_release_age = "shadow"\n' \
+  >"$table_then_scalar"
+if normalize_mise_toml "$table_then_scalar" >/dev/null 2>&1; then
+  fail "TOML normalizer accepted a table followed by the same scalar path"
+fi
+scalar_parent="$SANDBOX/scalar-parent.toml"
+printf 'settings = "shadow"\n[settings.child]\nvalue = "0s"\n' >"$scalar_parent"
+if normalize_mise_toml "$scalar_parent" >/dev/null 2>&1; then
+  fail "TOML normalizer accepted a table beneath a scalar"
+fi
+for malformed_number in 1_ 1__2 01; do
+  malformed_number_file="$SANDBOX/malformed-number-$malformed_number.toml"
+  printf '[settings]\nminimum_release_age = "0s"\n[tools]\nbad = %s\n' "$malformed_number" \
+    >"$malformed_number_file"
+  if normalize_mise_toml "$malformed_number_file" >/dev/null 2>&1; then
+    fail "TOML normalizer accepted malformed number: $malformed_number"
+  fi
+done
+control_toml="$SANDBOX/control-string.toml"
+printf '[settings]\nminimum_release_age = "0s"\n[tools]\nbad = "before\177after"\n' >"$control_toml"
+if normalize_mise_toml "$control_toml" >/dev/null 2>&1; then
+  fail "TOML normalizer accepted a raw forbidden control"
+fi
+escaped_control_toml="$SANDBOX/escaped-control-string.toml"
+printf '[settings]\nminimum_release_age = "0s"\n[tools]\nbad = "before\\u007Fafter"\n' \
+  >"$escaped_control_toml"
+if normalize_mise_toml "$escaped_control_toml" >/dev/null 2>&1; then
+  fail "TOML normalizer accepted a decoded forbidden control"
+fi
+tab_toml="$SANDBOX/tab-string.toml"
+printf '[settings]\nminimum_release_age = "before\tafter"\n[tools]\nescaped = "before\\tafter"\n' \
+  >"$tab_toml"
+tab_model=$(normalize_mise_toml "$tab_toml") || fail "TOML normalizer rejected permitted tabs"
+[[ $tab_model == $'basic-string\tsettings.minimum_release_age\tbefore\tafter\nbasic-string\ttools.escaped\tbefore\tafter' ]] ||
+  fail "TOML normalizer did not preserve permitted tabs"
+for control_location in separator comment suffix; do
+  control_location_file="$SANDBOX/control-$control_location.toml"
+  case $control_location in
+    separator) control_setting=$'minimum_release_age\v= "0s"' ;;
+    comment) control_setting=$'minimum_release_age = "0s" # comment\177' ;;
+    suffix) control_setting=$'minimum_release_age = "0s"\v' ;;
+  esac
+  printf '[settings]\n%s\n' "$control_setting" >"$control_location_file"
+  if normalize_mise_toml "$control_location_file" >/dev/null 2>&1; then
+    fail "TOML normalizer accepted a control in the $control_location location"
+  fi
+done
+assertions=$((assertions + 15))
 
 # --- free-space guard
 DOTS_UPDATE_MIN_FREE_KB=1 "$ROOT/bin/dots-update-requires-free-space" ||
@@ -382,7 +578,7 @@ linked_state_home="$SANDBOX/update-linked-state-home"
 linked_state_target="$SANDBOX/update-linked-state-target"
 mkdir -p "$linked_state_home" "$linked_state_target"
 ln -s "$linked_state_target" "$linked_state_home/.local"
-if HOME="$linked_state_home" DOTS_PATH="$ROOT" DOTS_UPDATE_LOCK= \
+if HOME="$linked_state_home" DOTS_PATH="$ROOT" DOTS_UPDATE_LOCK='' \
   "$ROOT/bin/dots-update-lock" true >/dev/null 2>&1; then
   fail "update lock accepted a symlinked state parent"
 fi
@@ -459,7 +655,8 @@ git_test -C "$noremote" commit -q --allow-empty -m x
 mkdir -p "$noremote/bin" "$noremote/install/helpers"
 cp "$ROOT/bin/dots-update-available" "$ROOT/bin/dots-path-resolve" \
   "$ROOT/bin/dots-ensure-flock" "$noremote/bin/"
-cp "$ROOT/install/helpers/files.sh" "$noremote/install/helpers/files.sh"
+cp "$ROOT/install/helpers/files.sh" "$ROOT/install/helpers/runtime.sh" \
+  "$noremote/install/helpers/"
 rc=0
 DOTS_PATH="$noremote" "$ROOT/bin/dots-update-available" >/dev/null 2>&1 || rc=$?
 ((rc == 2)) || fail "no-remote should exit 2 (got $rc)"

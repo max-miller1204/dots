@@ -101,7 +101,8 @@ assert_contains "$out" "pkg-add" "group --help lists subcommands"
 # IFS holds a set of single characters rather than a delimiter string.
 tmpbin=$SANDBOX/probe-repo/bin
 mkdir -p "$tmpbin" "$SANDBOX/probe-repo/install/helpers"
-cp "$ROOT/install/helpers/metadata.sh" "$SANDBOX/probe-repo/install/helpers/metadata.sh"
+cp "$ROOT/install/helpers/files.sh" "$ROOT/install/helpers/metadata.sh" \
+  "$ROOT/install/helpers/runtime.sh" "$SANDBOX/probe-repo/install/helpers/"
 cat >"$tmpbin/dots-semicolon-probe" <<'PROBE'
 #!/usr/bin/env bash
 # dots:summary=Probe for separator handling
@@ -259,8 +260,11 @@ assertions=$((assertions + 1))
 # Direct commands that have not sourced shell startup still honor the serialized
 # canonical checkout path.
 serialized_repo="$SANDBOX/serialized checkout"
-mkdir -p "$serialized_repo/themes/serialized-probe" "$serialized_repo/default/zsh" "$serialized_repo/bin"
+mkdir -p "$serialized_repo/themes/serialized-probe" "$serialized_repo/default/zsh" \
+  "$serialized_repo/bin" "$serialized_repo/install/helpers"
 cp -R "$ROOT/default/bash" "$serialized_repo/default/bash"
+cp "$ROOT/install/helpers/files.sh" "$ROOT/install/helpers/runtime.sh" \
+  "$serialized_repo/install/helpers/"
 cp "$ROOT/default/zsh/completions" "$serialized_repo/default/zsh/completions"
 cp "$ROOT/bin/dots-theme-list" "$ROOT/bin/dots-path-resolve" "$serialized_repo/bin/"
 printf 'accent = "#000000"\n' >"$serialized_repo/themes/serialized-probe/colors.toml"
@@ -305,7 +309,9 @@ fi
 # serialized checkout instead of mixing stale code with canonical data.
 canonical_probe="$SANDBOX/canonical-probe"
 obsolete_probe="$SANDBOX/obsolete-probe"
-mkdir -p "$canonical_probe/bin" "$obsolete_probe/bin"
+mkdir -p "$canonical_probe/bin" "$obsolete_probe/bin" "$obsolete_probe/install/helpers"
+cp "$ROOT/install/helpers/files.sh" "$ROOT/install/helpers/runtime.sh" \
+  "$obsolete_probe/install/helpers/"
 printf '#!/usr/bin/env bash\necho canonical-code\n' >"$canonical_probe/bin/dots-version"
 printf '#!/usr/bin/env bash\necho canonical-router\n' >"$canonical_probe/bin/dots"
 chmod +x "$canonical_probe/bin/dots-version" "$canonical_probe/bin/dots"
@@ -366,8 +372,34 @@ for startup_shell in "${startup_shells[@]}"; do
   ((startup_rc != 0)) || fail "$startup_shell startup accepted FIFO checkout path"
 done
 rm "$HOME/.config/dots/path"
+
+# Runtime authority files cannot escape through symlinked parent directories.
+parent_link_home="$SANDBOX/path-parent-link-home"
+parent_link_target="$SANDBOX/path-parent-link-target"
+mkdir -p "$parent_link_home" "$parent_link_target/dots"
+printf '%s\n' "$ROOT" >"$parent_link_target/dots/path"
+printf '%s\n' "$ROOT" >"$parent_link_target/dots/source-path"
+ln -s "$parent_link_target" "$parent_link_home/.config"
+if HOME="$parent_link_home" "$ROOT/bin/dots-path-resolve" >/dev/null 2>&1; then
+  fail "path resolver accepted a runtime path beneath a symlinked .config"
+fi
+if HOME="$parent_link_home" "$ROOT/bin/dots-source-resolve" >/dev/null 2>&1; then
+  fail "source resolver accepted a source path beneath a symlinked .config"
+fi
+for startup_shell in "${startup_shells[@]}"; do
+  if HOME="$parent_link_home" PATH=/usr/bin:/bin "$startup_shell" -c 'source "$1"' \
+    "$startup_shell" "$ROOT/default/bash/env-bootstrap" >/dev/null 2>&1; then
+    fail "$startup_shell startup accepted a runtime path beneath a symlinked .config"
+  fi
+done
+nested_link_home="$SANDBOX/path-nested-link-home"
+mkdir -p "$nested_link_home/.config"
+ln -s "$parent_link_target/dots" "$nested_link_home/.config/dots"
+if HOME="$nested_link_home" "$ROOT/bin/dots-path-resolve" >/dev/null 2>&1; then
+  fail "path resolver accepted a runtime path beneath a symlinked dots directory"
+fi
 printf '%s\n' "$ROOT" >"$HOME/.config/dots/path"
-assertions=$((assertions + 23))
+assertions=$((assertions + 26 + ${#startup_shells[@]}))
 
 # Hooks continue after one failure but report aggregate failure to callers.
 mkdir -p "$HOME/.config/dots/hooks/audit.d"
@@ -377,6 +409,19 @@ if "$ROOT/bin/dots-hook" audit >/dev/null 2>&1; then
   fail "dots-hook hid a hook failure"
 fi
 [[ -f "$HOME/hook-after-failure" ]] || fail "dots-hook stopped before later hooks"
+assertions=$((assertions + 2))
+
+# Hook events are user extension points and intentionally follow a symlinked
+# event script, matching the documented Quattro-compatible policy.
+printf 'touch "$HOME/symlinked-hook-ran"\n' >"$SANDBOX/symlinked-event-hook"
+ln -s "$SANDBOX/symlinked-event-hook" "$HOME/.config/dots/hooks/symlinked-event"
+"$ROOT/bin/dots-hook" symlinked-event
+[[ -f $HOME/symlinked-hook-ran ]] || fail "hook runner did not follow a symlinked event hook"
+mkdir -p "$SANDBOX/symlinked-hook-dir"
+printf 'touch "$HOME/symlinked-hook-dir-ran"\n' >"$SANDBOX/symlinked-hook-dir/run"
+ln -s "$SANDBOX/symlinked-hook-dir" "$HOME/.config/dots/hooks/symlinked-dir.d"
+"$ROOT/bin/dots-hook" symlinked-dir
+[[ -f $HOME/symlinked-hook-dir-ran ]] || fail "hook runner did not follow a symlinked event directory"
 assertions=$((assertions + 2))
 
 # refresh-config: seeds a file, then backs up a modified copy
@@ -421,7 +466,8 @@ assertions=$((assertions + 8))
 # Import and hook installation enforce their repository/HOME ownership roots.
 fake_repo="$SANDBOX/import-repo"
 mkdir -p "$fake_repo/install/helpers" "$fake_repo/config" "$fake_repo/bin" "$SANDBOX/import-outside"
-cp "$ROOT/install/helpers/files.sh" "$fake_repo/install/helpers/files.sh"
+cp "$ROOT/install/helpers/files.sh" "$ROOT/install/helpers/runtime.sh" \
+  "$fake_repo/install/helpers/"
 cp "$ROOT/bin/dots-config-import" "$ROOT/bin/dots-path-resolve" "$fake_repo/bin/"
 ln -s "$SANDBOX/import-outside" "$fake_repo/config/nvim"
 mkdir -p "$HOME/.config/nvim"
@@ -695,8 +741,9 @@ mkdir -p "$no_jq_repo/bin" "$no_jq_repo/install/helpers" "$activation_generation
 ln -s 'theme-generations/generation.TEST' "$activation_home/.local/state/dots/current"
 printf 'dots-theme-generation-v1\n' >"$activation_generation/.dots-theme-generation"
 printf 'tokyo-night\n' >"$activation_generation/theme.name"
-cp "$ROOT/install/helpers/files.sh" "$ROOT/install/helpers/theme-generation.sh" \
-  "$ROOT/install/helpers/theme-sync.sh" "$no_jq_repo/install/helpers/"
+cp "$ROOT/install/helpers/files.sh" "$ROOT/install/helpers/runtime.sh" \
+  "$ROOT/install/helpers/theme-generation.sh" "$ROOT/install/helpers/theme-sync.sh" \
+  "$no_jq_repo/install/helpers/"
 cp "$ROOT/bin/dots-theme-sync-pi" "$ROOT/bin/dots-theme-sync-claude" \
   "$ROOT/bin/dots-theme-source-valid" "$ROOT/bin/dots-path-resolve" "$no_jq_repo/bin/"
 printf '#!/usr/bin/env bash\nexit 1\n' >"$no_jq_repo/bin/dots-cmd-present"
@@ -774,6 +821,107 @@ if grep -q '^set-option ' "$tmux_home/tmux-calls"; then
   fail "live tmux duplicated generated config with hardcoded options"
 fi
 assertions=$((assertions + 3))
+
+# Palette parsing accepts only the documented top-level TOML subset and
+# decodes safe basic-string escapes before rendering.
+palette_home="$SANDBOX/palette-parser-home"
+palette_theme="$palette_home/theme"
+mkdir -p "$palette_theme" "$palette_home/.config/dots/themed"
+cp "$ROOT/themes/tokyo-night/colors.toml" "$palette_theme/colors.toml"
+printf '  # spaced comment\ncustom = "quote: \\" slash: \\\\ tab:\\t unicode-tab:\\u0009 unicode:\\u263A" # trailing\n' >>\
+  "$palette_theme/colors.toml"
+printf '%s' $'literal_tab = "before\tafter"\n' >>"$palette_theme/colors.toml"
+printf '{{ custom }}\n{{ literal_tab }}\n' >"$palette_home/.config/dots/themed/parser.txt.tpl"
+HOME="$palette_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-set-templates" "$palette_theme"
+[[ $(cat "$palette_theme/parser.txt") == \
+  $'quote: " slash: \\ tab:\t unicode-tab:\t unicode:☺\nbefore\tafter' ]] ||
+  fail "theme palette parser did not decode safe basic-string escapes"
+rm "$palette_home/.config/dots/themed/parser.txt.tpl"
+
+# An explicitly empty derived key remains present and therefore suppresses the
+# fallback from selection rather than being confused with an unset key.
+empty_derived="$SANDBOX/empty-derived-theme"
+mkdir -p "$empty_derived"
+cp "$ROOT/themes/tokyo-night/colors.toml" "$empty_derived/colors.toml"
+printf 'selection_background = ""\n' >>"$empty_derived/colors.toml"
+HOME="$palette_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-set-templates" "$empty_derived"
+grep -q '^selection-background = $' "$empty_derived/ghostty.conf" ||
+  fail "explicit empty derived palette value was treated as unset"
+
+for invalid_palette_line in \
+  'accent = "duplicate"' \
+  '[nested]' \
+  'bad = "value" trailing' \
+  'bad = "unsafe\nvalue"' \
+  'bad = "unsafe\u000Avalue"' \
+  'bad = "unsafe\u0001value"' \
+  'bad = "unsafe\U0000007Fvalue"' \
+  $'bad\v= "unsafe separator"' \
+  $'# unsafe comment\177' \
+  'bad = "unterminated'; do
+  invalid_palette="$SANDBOX/invalid-palette-$RANDOM"
+  mkdir -p "$invalid_palette"
+  cp "$ROOT/themes/tokyo-night/colors.toml" "$invalid_palette/colors.toml"
+  printf '%s\n' "$invalid_palette_line" >>"$invalid_palette/colors.toml"
+  invalid_palette_error=""
+  if invalid_palette_error=$(HOME="$palette_home" DOTS_PATH="$ROOT" \
+    "$ROOT/bin/dots-theme-set-templates" "$invalid_palette" 2>&1); then
+    fail "theme parser accepted unsupported palette syntax: $invalid_palette_line"
+  fi
+  assert_contains "$invalid_palette_error" "Invalid theme palette" \
+    "invalid palette reports its source clearly"
+done
+assertions=$((assertions + 2))
+
+nul_palette="$SANDBOX/invalid-palette-nul"
+nul_callback_marker="$SANDBOX/nul-palette-callback"
+mkdir -p "$nul_palette"
+cp "$ROOT/themes/tokyo-night/colors.toml" "$nul_palette/colors.toml"
+printf 'bad = "before\0after"\n' >>"$nul_palette/colors.toml"
+source "$ROOT/install/helpers/theme-palette.sh"
+nul_palette_callback() {
+  touch "$nul_callback_marker"
+}
+if dots_theme_palette_parse "$nul_palette/colors.toml" nul_palette_callback >/dev/null 2>&1; then
+  fail "theme palette parser accepted an actual NUL byte"
+fi
+[[ ! -e $nul_callback_marker ]] || fail "theme palette parser invoked a callback before rejecting NUL"
+printf '{{ bad }}\n' >"$palette_home/.config/dots/themed/nul.txt.tpl"
+if HOME="$palette_home" DOTS_PATH="$ROOT" \
+  "$ROOT/bin/dots-theme-set-templates" "$nul_palette" >/dev/null 2>&1; then
+  fail "theme renderer accepted a palette containing an actual NUL byte"
+fi
+[[ ! -e $nul_palette/nul.txt ]] || fail "theme renderer wrote output for a NUL-bearing palette"
+rm "$palette_home/.config/dots/themed/nul.txt.tpl"
+assertions=$((assertions + 3))
+
+invalid_utf8_palette="$SANDBOX/invalid-palette-utf8"
+mkdir -p "$invalid_utf8_palette"
+cp "$ROOT/themes/tokyo-night/colors.toml" "$invalid_utf8_palette/colors.toml"
+printf 'bad = "before\377after"\n' >>"$invalid_utf8_palette/colors.toml"
+printf '{{ bad }}\n' >"$palette_home/.config/dots/themed/invalid-utf8.txt.tpl"
+if HOME="$palette_home" DOTS_PATH="$ROOT" \
+  "$ROOT/bin/dots-theme-set-templates" "$invalid_utf8_palette" >/dev/null 2>&1; then
+  fail "theme renderer accepted malformed UTF-8 palette bytes"
+fi
+[[ ! -e $invalid_utf8_palette/invalid-utf8.txt ]] ||
+  fail "theme renderer wrote output for malformed UTF-8 palette bytes"
+rm "$palette_home/.config/dots/themed/invalid-utf8.txt.tpl"
+assertions=$((assertions + 2))
+
+# Layout-only generation validation is shared with migrations without taking
+# on the stricter theme-name and ownership-marker checks used by theme-set.
+layout_root="$SANDBOX/generation-layout"
+mkdir -p "$layout_root/theme-generations/generation.TEST/theme"
+printf 'INVALID migration-era name\n' >\
+  "$layout_root/theme-generations/generation.TEST/theme.name"
+DOTS_PATH="$ROOT" source "$ROOT/install/helpers/theme-generation.sh"
+dots_theme_generation_layout_valid "$layout_root" 'theme-generations/generation.TEST' ||
+  fail "shared generation layout rejected migration-compatible structure"
+if dots_theme_generation_target_valid "$layout_root" 'theme-generations/generation.TEST'; then
+  fail "strict generation ownership accepted invalid name and missing marker"
+fi
+assertions=$((assertions + 2))
 
 # Foreign files and links at integration targets are never replaced.
 rm "$HOME/.config/btop/themes/dots-system.theme" "$HOME/.config/nvim/lua/plugins/dots-system.lua"
@@ -859,7 +1007,7 @@ cp "$ROOT/themes/tokyo-night/colors.toml" "$HOME/.config/dots/themes/escaped/col
 printf 'label = "a\\\\b&|c"\n' >>"$HOME/.config/dots/themes/escaped/colors.toml"
 printf '{{ label }}\n' >"$HOME/.config/dots/themed/escape.txt.tpl"
 "$ROOT/bin/dots" theme set escaped >/dev/null 2>&1
-[[ $(cat "$HOME/.local/state/dots/current/theme/escape.txt") == 'a\\b&|c' ]] || fail "theme renderer corrupted sed metacharacters"
+[[ $(cat "$HOME/.local/state/dots/current/theme/escape.txt") == 'a\b&|c' ]] || fail "theme renderer corrupted sed metacharacters"
 rm -rf "$HOME/.config/dots/themes/escaped" "$HOME/.config/dots/themed/escape.txt.tpl"
 assertions=$((assertions + 1))
 
@@ -1076,7 +1224,8 @@ export DOTS_MIGRATION_STATE="$HOME/.local/state/dots/migrations"
 mkdir -p "$SANDBOX/repo/migrations" "$SANDBOX/repo/bin" "$SANDBOX/repo/install/helpers"
 cp "$ROOT/bin/dots-migrate" "$ROOT/bin/dots-path-resolve" "$ROOT/bin/dots-ensure-flock" \
   "$ROOT/bin/dots-update-restart" "$SANDBOX/repo/bin/"
-cp "$ROOT/install/helpers/files.sh" "$SANDBOX/repo/install/helpers/files.sh"
+cp "$ROOT/install/helpers/files.sh" "$ROOT/install/helpers/runtime.sh" \
+  "$SANDBOX/repo/install/helpers/"
 echo 'echo "migration ran" > "$HOME/migration-proof"' >"$SANDBOX/repo/migrations/1700000000.sh"
 printf '%s\n' "$SANDBOX/repo" >"$HOME/.config/dots/path"
 
@@ -1135,7 +1284,8 @@ mkdir -p "$SANDBOX/concurrent-repo/migrations" "$SANDBOX/concurrent-repo/bin" \
   "$SANDBOX/concurrent-repo/install/helpers"
 cp "$ROOT/bin/dots-migrate" "$ROOT/bin/dots-path-resolve" "$ROOT/bin/dots-ensure-flock" \
   "$ROOT/bin/dots-update-restart" "$SANDBOX/concurrent-repo/bin/"
-cp "$ROOT/install/helpers/files.sh" "$SANDBOX/concurrent-repo/install/helpers/files.sh"
+cp "$ROOT/install/helpers/files.sh" "$ROOT/install/helpers/runtime.sh" \
+  "$SANDBOX/concurrent-repo/install/helpers/"
 cat >"$SANDBOX/concurrent-repo/migrations/1700000001.sh" <<'EOF'
 printf 'run\n' >>"$HOME/concurrent-migration-proof"
 sleep 0.2
@@ -1173,7 +1323,8 @@ restart_state="$HOME/.local/state/dots/restart-migrations"
 mkdir -p "$restart_repo/migrations" "$restart_repo/bin" "$restart_repo/install/helpers"
 cp "$ROOT/bin/dots-migrate" "$ROOT/bin/dots-path-resolve" "$ROOT/bin/dots-ensure-flock" \
   "$restart_repo/bin/"
-cp "$ROOT/install/helpers/files.sh" "$restart_repo/install/helpers/files.sh"
+cp "$ROOT/install/helpers/files.sh" "$ROOT/install/helpers/runtime.sh" \
+  "$restart_repo/install/helpers/"
 printf 'touch "$HOME/restart-migration-one"\n' >"$restart_repo/migrations/1700000010.sh"
 cat >"$restart_repo/bin/dots-update-restart" <<'EOF'
 #!/usr/bin/env bash
@@ -1199,7 +1350,8 @@ tab_repo="$SANDBOX/"$'tab\tmigration-repo'
 mkdir -p "$tab_repo/migrations" "$tab_repo/bin" "$tab_repo/install/helpers"
 cp "$ROOT/bin/dots-migrate" "$ROOT/bin/dots-path-resolve" "$ROOT/bin/dots-ensure-flock" \
   "$ROOT/bin/dots-update-restart" "$tab_repo/bin/"
-cp "$ROOT/install/helpers/files.sh" "$tab_repo/install/helpers/files.sh"
+cp "$ROOT/install/helpers/files.sh" "$ROOT/install/helpers/runtime.sh" \
+  "$tab_repo/install/helpers/"
 printf 'printf tab-ran >"$HOME/tab-migration-proof"\n' >"$tab_repo/migrations/1700000002.sh"
 tab_state="$HOME/.local/state/dots/tab-migrations"
 printf '%s\n' "$tab_repo" >"$HOME/.config/dots/path"

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Move existing installs onto the durable checkout-path, shell, and built-in
+# Move existing installs onto the durable runtime path, shell, and built-in
 # theme-integration ownership model.
 
 source "$DOTS_PATH/install/helpers/files.sh"
 
 if [[ $DOTS_PATH == *$'\n'* || $DOTS_PATH == *:* ]]; then
-  echo "The dots checkout path cannot contain a newline or colon: $DOTS_PATH" >&2
+  echo "The dots runtime path cannot contain a newline or colon: $DOTS_PATH" >&2
   exit 1
 fi
 
@@ -24,7 +24,7 @@ fi
 legacy_conf="$HOME/.config/dots/dots.conf"
 if [[ -e $legacy_conf || -L $legacy_conf ]]; then
   dots_file_remove "$legacy_conf" backup
-  echo "Retired executable checkout config (backup at $DOTS_FILE_BACKUP)"
+  echo "Retired executable runtime config (backup at $DOTS_FILE_BACKUP)"
 fi
 
 cat >"$legacy_hook_source" <<'LEGACY_HOOK'

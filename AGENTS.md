@@ -22,7 +22,9 @@ This repo replicates omarchy's dotfiles architecture on macOS. Read
   solely for system-level pieces (Bash, flock), and only inside
   `bin/dots-install` and `install/config/flock.sh`: never in shared code.
 - Use `[[ ]]` for string/file tests and `(( ))` for numeric tests
-- In `[[ ]]`, don't quote variables, but do quote string literals when comparing
+- In `[[ ]]`, prefer unquoted simple operands. Quote a variable on the right of
+  `==` or `!=` when it must be matched literally rather than as a glob pattern,
+  and quote string literals when comparing
 - For strings/paths with spaces, quote them instead of escaping spaces
 
 # Command naming
@@ -59,9 +61,11 @@ One-time repair scripts for existing installs, `migrations/<unix-timestamp>.sh`
 (create with `migrations/$(date +%s).sh`). They run through `dots-migrate`
 during `dots update`; completion markers live in
 `~/.local/state/dots/migrations/<filename>`. Migrations must be idempotent.
-Fresh installs mark all shipped migrations as applied. A migration that
-changes something already loaded (shell config, a running service) should
-`touch ~/.local/state/dots/restart-<component>-required`; the update
+Fresh installs mark all shipped migrations as applied. Keep each migration
+focused on one repair; put exact historical comparison inputs under
+`migrations/fixtures/<timestamp>/` instead of embedding large heredocs. A
+migration that changes something already loaded (shell config, a running
+service) should `touch ~/.local/state/dots/restart-<component>-required`; the update
 pipeline reports and clears these markers at the end
 (see [`docs/update-process.md`](docs/update-process.md)).
 

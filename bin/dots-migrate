@@ -11,12 +11,7 @@ usage() {
   echo "Usage: dots-migrate [--pending|--check]"
 }
 
-SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
-DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
-if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
-  exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"
-fi
+source "${BASH_SOURCE[0]%/*}/../install/helpers/runtime.sh"
 source "$DOTS_PATH/install/helpers/files.sh"
 
 while (($#)); do
@@ -56,24 +51,9 @@ pending_migrations() {
 
 MIGRATION_LOCK="$STATE_DIR/migrate.lock"
 "$SELF_DIR/dots-ensure-flock"
-dots_file_assert_safe_parents "$MIGRATION_LOCK" "$HOME"
-mkdir -p "$STATE_DIR"
-dots_file_assert_safe_parents "$MIGRATION_LOCK" "$HOME"
-if [[ -L $MIGRATION_LOCK || ( -e $MIGRATION_LOCK && ! -f $MIGRATION_LOCK ) ]]; then
-  echo "Refusing unsafe migration lock path: $MIGRATION_LOCK" >&2
-  exit 1
-fi
-exec 8>>"$MIGRATION_LOCK"
-if [[ -L $MIGRATION_LOCK || ! -f $MIGRATION_LOCK ]]; then
-  echo "Migration lock path changed during open: $MIGRATION_LOCK" >&2
-  exit 1
-fi
-if ! dots_file_path_matches_fd "$MIGRATION_LOCK" 8; then
-  echo "Migration lock path changed during open: $MIGRATION_LOCK" >&2
-  exit 1
-fi
+dots_lock_open_fd9 "$MIGRATION_LOCK" Migration
 if [[ $mode == "pending" ]]; then
-  if ! flock -n 8; then
+  if ! flock -n 9; then
     echo "Cannot determine pending migrations while another migration is running." >&2
     exit 2
   fi
@@ -89,7 +69,7 @@ if [[ $mode == "pending" ]]; then
   fi
 fi
 
-flock 8
+flock 9
 
 [[ -d $MIGRATIONS_DIR ]] || exit 0
 
@@ -107,7 +87,7 @@ for file in "$MIGRATIONS_DIR"/*.sh; do
   if [[ ! -f $marker ]]; then
     echo -e "\033[32m\nRunning migration (${name%.sh})\033[0m"
     file_rc=0
-    DOTS_PATH="$DOTS_PATH" bash -euo pipefail "$file" 8>&- || file_rc=$?
+    DOTS_PATH="$DOTS_PATH" bash -euo pipefail "$file" 9>&- || file_rc=$?
     if ((file_rc == 0)); then
       dots_file_replace "$empty_marker" "$marker" discard
     else
@@ -123,8 +103,8 @@ done
 # standalone `dots migrate` surfaces them instead of leaving them for the
 # next `dots update`.
 if [[ -z ${DOTS_UPDATE_LOCK_PID:-} ]]; then
-  "$SELF_DIR/dots-update-restart" 8>&-
+  "$SELF_DIR/dots-update-restart" 9>&-
 fi
-flock -u 8
-exec 8>&-
+flock -u 9
+exec 9>&-
 exit "$migration_rc"

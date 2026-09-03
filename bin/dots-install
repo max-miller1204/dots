@@ -61,7 +61,7 @@ if [[ ${1:-} == "--developer" ]]; then
   install_mode=developer
   shift
 elif [[ ${1:-} == "--release-runtime" ]]; then
-  install_mode=release-runtime
+  install_mode="release-runtime"
   shift
 elif [[ ${1:-} == "--bootstrap-release" ]]; then
   install_mode=bootstrap-release
@@ -131,8 +131,6 @@ else
   fi
 fi
 
-dots_file_assert_safe_parents "$HOME/.local/state/dots/install.log" "$HOME"
-mkdir -p "$HOME/.local/state/dots"
 source "$DOTS_PATH/install/helpers/logging.sh"
 
 echo "Installing dots from $DOTS_PATH"
@@ -159,7 +157,7 @@ fi
 
 # Publish the repaired runtime path before consulting legacy completion state:
 # an unsafe completion marker must still fail closed, but must not prevent this
-# checkout-authority repair.
+# runtime-authority repair.
 install_done=0
 done_rc=0
 dots-done check install && install_done=1 || done_rc=$?
@@ -169,7 +167,7 @@ if ((done_rc > 1)); then
 fi
 
 # Older installs stored executable shell text here. It is no longer sourced;
-# preserve and remove it so there is only one checkout-location authority.
+# preserve and remove it so there is only one active-runtime authority.
 if [[ -e $HOME/.config/dots/dots.conf || -L $HOME/.config/dots/dots.conf ]]; then
   dots_file_remove "$HOME/.config/dots/dots.conf" backup
   echo "Retired ~/.config/dots/dots.conf (backup at $DOTS_FILE_BACKUP)"

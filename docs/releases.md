@@ -24,8 +24,8 @@ To build the same files locally from the current commit:
 ```
 
 Pass a second argument to choose an output directory. The build always reads
-committed `HEAD`, so uncommitted files cannot leak into a release. Verify downloaded
-assets with `sha256sum -c SHA256SUMS` on Linux or
+committed `HEAD`, so uncommitted files cannot leak into a release. Verify
+downloaded assets with `sha256sum -c SHA256SUMS` on Linux or
 `shasum -a 256 -c SHA256SUMS` on macOS.
 
 ## Installed releases
@@ -38,8 +38,21 @@ editable checkout is independent and may remain dirty while stable
 `dots update` installs releases.
 
 Normal installations run the latest release's `install.sh` directly and do not
-require a Git checkout. Use `dots version install`, `dots version list`, and
-`dots version rollback` to manage bundles afterward. `dots version list` verifies each candidate's ownership marker
-and complete integrity inventory, and labels unusable candidates `! invalid`.
+require a Git checkout. Use `dots version install`, `dots version list`,
+`dots version rollback`, and `dots version prune` to manage bundles afterward.
+`dots version list` verifies
+each candidate's ownership marker and complete integrity inventory, and labels
+unusable candidates `! invalid`.
+
+`dots version prune` reconciles interrupted pointer updates, preserves both the
+current and previous releases, and removes only inactive release directories
+whose ownership marker and full SHA-256 integrity inventory still verify.
+Symlinks, malformed names, foreign directories, and modified releases are never
+removed; they are reported as skipped invalid entries for manual inspection.
+Pruning requires interactive confirmation. Use `dots version prune --force`
+only when that confirmation is intentionally unnecessary, such as in
+automation. The operation holds the same update lock used by installation,
+activation, and rollback.
+
 Use `dots dev link <checkout>` only while testing unreleased code, and `dots dev
 unlink` to return to the stable runtime.
