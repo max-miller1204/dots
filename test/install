@@ -224,6 +224,25 @@ for invalid_runtime in 'bad:path' 'relative/runtime'; do
 done
 assertions=$((assertions + 4))
 
+# Both serialized release-path readers enforce the same absolute, colon-free
+# contract independently of the installer entrypoint.
+for reader_case in 'path dots_release_configured_path' 'source-path dots_release_source_path'; do
+  read -r reader_file reader_function <<<"$reader_case"
+  for invalid_runtime in 'bad:path' 'relative/runtime'; do
+    invalid_reader_home=$(mktemp -d "$SANDBOX/invalid-reader-home.XXXXXX")
+    mkdir -p "$invalid_reader_home/.config/dots"
+    printf '%s\n' "$invalid_runtime" >"$invalid_reader_home/.config/dots/$reader_file"
+    if HOME="$invalid_reader_home" bash -c '
+      source "$1/install/helpers/files.sh"
+      source "$1/install/helpers/releases.sh"
+      "$2"
+    ' bash "$repo" "$reader_function" >/dev/null 2>&1; then
+      fail "$reader_function accepted malformed serialized path: $invalid_runtime"
+    fi
+  done
+done
+assertions=$((assertions + 4))
+
 locked_invalid_home="$SANDBOX/locked-invalid-home"
 mkdir -p "$locked_invalid_home/.config/dots" "$locked_invalid_home/.local/state/dots"
 printf '%s\n' 'bad:path' >"$locked_invalid_home/.config/dots/path"
