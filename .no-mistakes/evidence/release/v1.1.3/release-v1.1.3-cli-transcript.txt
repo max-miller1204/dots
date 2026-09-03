@@ -1,0 +1,20 @@
+$ ./scripts/build-release.sh v1.1.3 <temporary-dist>
+Built /tmp/dots-release-evidence.LaTAs9/dist/dots-1.1.3.tar.gz
+Built /tmp/dots-release-evidence.LaTAs9/dist/install.sh
+Built /tmp/dots-release-evidence.LaTAs9/dist/SHA256SUMS
+Built /tmp/dots-release-evidence.LaTAs9/dist/dots-release.txt
+$ HOME=<temporary-home> DOTS_RELEASE_ARCHIVE_URL=file://.../dots-1.1.3.tar.gz <temporary-dist>/install.sh
+Downloading dots 1.1.3...
+Installing dots 1.1.3...
+Done. Open a new terminal (or run: exec "$SHELL" -l), then try: dots
+$ HOME=<temporary-home> DOTS_PATH= <active-release>/bin/dots-version
+dots 1.1.3 (stable)
+$ tar -tzf dots-1.1.3.tar.gz | sed -n "1,8p"
+dots-1.1.3/
+dots-1.1.3/bin/
+dots-1.1.3/bin/dots
+dots-1.1.3/bin/dots-cmd-missing
+dots-1.1.3/bin/dots-cmd-present
+dots-1.1.3/bin/dots-completion-candidates
+dots-1.1.3/bin/dots-config-import
+dots-1.1.3/bin/dots-dev-link
