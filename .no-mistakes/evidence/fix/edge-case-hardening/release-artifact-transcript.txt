@@ -1,0 +1,17 @@
+=== Build the committed release payload ===
+Built /var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T//dots-release-evidence.uVElKd/dots-1.1.0.tar.gz
+Built /var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T//dots-release-evidence.uVElKd/install.sh
+Built /var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T//dots-release-evidence.uVElKd/SHA256SUMS
+Built /var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T//dots-release-evidence.uVElKd/dots-release.txt
+
+=== Verify emitted checksums ===
+dots-1.1.0.tar.gz: OK
+install.sh: OK
+
+=== Run dots from the emitted archive ===
+dots 1.1.0 (unmanaged)
+
+=== Parse CI artifact handoff semantics ===
+artifact_name=release-artifacts
+upload_path=${{ runner.temp }}/dist/
+published_files=dist/dots-${GITHUB_REF_NAME#v}.tar.gz,dist/install.sh,dist/SHA256SUMS,dist/dots-release.txt

@@ -1,0 +1,25 @@
+=== Empty command routing ===
+exit=1
+dots: unknown command: 
+Run 'dots' to list available groups.
+
+=== Noninteractive Zsh startup ===
+DOTS_PATH=/Users/maxmiller/.no-mistakes/worktrees/e030e65a1343/01M1JGPBB646WNRQG7YXDXWFD2
+PATH_HEAD=/Users/maxmiller/.no-mistakes/worktrees/e030e65a1343/01M1JGPBB646WNRQG7YXDXWFD2/bin
+interactive_function_n=0
+
+=== Unterminated palette plus live tmux override ===
+rendered: set-option -g status-style "fg=#abcdef"
+tmux call: source-file /var/folders/6q/ntq4_9nj10g2s5rr234ctb000000gn/T//dots-evidence.I6cO2n/home/.local/state/dots/current/theme/tmux.conf
+
+=== Failed migration continues to later migration ===
+exit=7
+[32m
+Running migration (1700000001)[0m
+Migration failed (1700000001, exit 7); continuing.
+[32m
+Running migration (1700000002)[0m
+later_state=later migration ran; failed_marker=absent; later_marker=present
+
+=== Failed config enumeration preserves live file ===
+exit=1; live_content=keep after discovery failure
