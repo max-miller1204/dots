@@ -60,12 +60,13 @@ remains unresolved.
 
 Palette files use a strict TOML subset: blank lines and comments, plus unique
 top-level bare keys made of letters, numbers, and underscores assigned to
-double-quoted basic strings. Spaces and trailing comments are accepted. Quote,
-backslash, tab, and valid non-NUL Unicode scalar escapes are decoded.
-Basic-string escapes that produce line or other unsafe control characters are
-rejected because rendered palette values are single-line. Malformed
-assignments, duplicate keys, tables, dotted or quoted keys, multiline strings,
-and other TOML value types fail theme publication clearly.
+double-quoted basic strings. Spaces and trailing comments are accepted.
+Escaped quotes, backslashes, tabs, and permitted Unicode scalars are decoded;
+literal tabs are also accepted. Escapes or raw input that produce line or other
+unsafe control characters are rejected because rendered palette values are
+single-line. Malformed assignments, duplicate keys, tables, dotted or quoted
+keys, multiline strings, and other TOML value types fail theme publication
+clearly.
 
 `selection_background` is derived from a non-empty `selection`, and
 `selection_foreground` from a non-empty `bright_foreground`, unless the

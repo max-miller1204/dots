@@ -136,7 +136,7 @@ cat "$bootstrap_installer" | \
   DOTS_RELEASE_BASE_URL="file://$release_server" "$BASH" >/dev/null
 bootstrap_current="$bootstrap_home/.local/share/dots/current"
 [[ $(cat "$bootstrap_home/.config/dots/path") == "$bootstrap_current" ]] || fail "release installer did not select stable mode"
-bootstrap_version_output=$(HOME="$bootstrap_home" DOTS_PATH= "$bootstrap_current/bin/dots-version")
+bootstrap_version_output=$(HOME="$bootstrap_home" DOTS_PATH='' "$bootstrap_current/bin/dots-version")
 [[ $bootstrap_version_output == "dots $built_version (stable)" ]] || fail "release installer activated the wrong version"
 [[ ! -e $bootstrap_home/.config/dots/source-path ]] || fail "release installer invented a source checkout"
 [[ -f $bootstrap_home/.local/state/dots/done/install ]] || fail "release installer did not finish convergence"
@@ -510,7 +510,7 @@ wait "$lock_pid" 2>/dev/null || true
 assertions=$((assertions + 5))
 
 # Explicit pruning is locked and conservative: cancellation changes nothing,
-# current and previous survive, and only an older fully verified tree is
+# current and previous survive, and only an inactive fully verified tree is
 # removed. Malformed, foreign, modified, and symlinked entries are reported and
 # left for manual inspection, including awkward path names.
 prune_home="$SANDBOX/prune-home"

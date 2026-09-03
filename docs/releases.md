@@ -45,14 +45,14 @@ each candidate's ownership marker and complete integrity inventory, and labels
 unusable candidates `! invalid`.
 
 `dots version prune` reconciles interrupted pointer updates, preserves both the
-current and previous releases, and removes only older release directories whose
-ownership marker and full SHA-256 integrity inventory still verify. Symlinks,
-malformed names, foreign directories, and modified releases are never removed;
-they are reported as skipped invalid entries for manual inspection. Pruning
-requires interactive confirmation. Use `dots version prune --force` only when
-that confirmation is intentionally unnecessary, such as in automation. The
-operation holds the same update lock used by installation, activation, and
-rollback.
+current and previous releases, and removes only inactive release directories
+whose ownership marker and full SHA-256 integrity inventory still verify.
+Symlinks, malformed names, foreign directories, and modified releases are never
+removed; they are reported as skipped invalid entries for manual inspection.
+Pruning requires interactive confirmation. Use `dots version prune --force`
+only when that confirmation is intentionally unnecessary, such as in
+automation. The operation holds the same update lock used by installation,
+activation, and rollback.
 
 Use `dots dev link <checkout>` only while testing unreleased code, and `dots dev
 unlink` to return to the stable runtime.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# dots:summary=Remove old verified releases while preserving rollback
+# dots:summary=Remove inactive verified releases while preserving rollback
 # dots:args=[--force]
 # dots:examples=dots version prune;;dots version prune --force
 

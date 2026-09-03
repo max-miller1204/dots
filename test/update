@@ -578,7 +578,7 @@ linked_state_home="$SANDBOX/update-linked-state-home"
 linked_state_target="$SANDBOX/update-linked-state-target"
 mkdir -p "$linked_state_home" "$linked_state_target"
 ln -s "$linked_state_target" "$linked_state_home/.local"
-if HOME="$linked_state_home" DOTS_PATH="$ROOT" DOTS_UPDATE_LOCK= \
+if HOME="$linked_state_home" DOTS_PATH="$ROOT" DOTS_UPDATE_LOCK='' \
   "$ROOT/bin/dots-update-lock" true >/dev/null 2>&1; then
   fail "update lock accepted a symlinked state parent"
 fi

@@ -122,7 +122,6 @@ if command -v mise >/dev/null 2>&1; then
     tmux@latest
     zoxide@latest
   )
-  tool_merge_failed=""
   for tool in "${tools[@]}"; do
     if ! mise use --global "$tool"; then
       echo "Could not merge $tool; the migration will retry it next update." >&2

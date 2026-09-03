@@ -61,7 +61,7 @@ if [[ ${1:-} == "--developer" ]]; then
   install_mode=developer
   shift
 elif [[ ${1:-} == "--release-runtime" ]]; then
-  install_mode=release-runtime
+  install_mode="release-runtime"
   shift
 elif [[ ${1:-} == "--bootstrap-release" ]]; then
   install_mode=bootstrap-release

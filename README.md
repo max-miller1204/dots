@@ -32,7 +32,7 @@ dots                         # list commands
 dots update                  # update dots and installed tools
 dots update available        # check for published releases
 dots version rollback        # return to the previous runtime release
-dots version prune           # remove older verified releases
+dots version prune           # remove inactive verified releases
 dots theme list              # list themes
 dots theme set tokyo-night   # select a theme
 ```

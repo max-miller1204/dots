@@ -15,7 +15,7 @@ current=""
     basename "$dir"
   done
 } | sort -u | while IFS= read -r name; do
-  if [[ $name == $current ]]; then
+  if [[ $name == "$current" ]]; then
     echo "$name (current)"
   else
     echo "$name"

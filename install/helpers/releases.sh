@@ -478,7 +478,7 @@ dots_release_install_archive() { # install_archive <version> <archive> <sha256>
     return 1
   }
   actual_sha=$(dots_release_sha256 "$archive") || return 1
-  [[ ${actual_sha,,} == ${expected_sha,,} ]] || {
+  [[ ${actual_sha,,} == "${expected_sha,,}" ]] || {
     echo "Checksum verification failed for dots $version" >&2
     return 1
   }
