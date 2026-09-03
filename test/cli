@@ -828,11 +828,11 @@ palette_home="$SANDBOX/palette-parser-home"
 palette_theme="$palette_home/theme"
 mkdir -p "$palette_theme" "$palette_home/.config/dots/themed"
 cp "$ROOT/themes/tokyo-night/colors.toml" "$palette_theme/colors.toml"
-printf '  # spaced comment\ncustom = "quote: \\" slash: \\\\ tab:\\t unicode:\\u263A" # trailing\n' >>\
+printf '  # spaced comment\ncustom = "quote: \\" slash: \\\\ tab:\\t unicode-tab:\\u0009 unicode:\\u263A" # trailing\n' >>\
   "$palette_theme/colors.toml"
 printf '{{ custom }}\n' >"$palette_home/.config/dots/themed/parser.txt.tpl"
 HOME="$palette_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-set-templates" "$palette_theme"
-[[ $(cat "$palette_theme/parser.txt") == $'quote: " slash: \\ tab:\t unicode:☺' ]] ||
+[[ $(cat "$palette_theme/parser.txt") == $'quote: " slash: \\ tab:\t unicode-tab:\t unicode:☺' ]] ||
   fail "theme palette parser did not decode safe basic-string escapes"
 rm "$palette_home/.config/dots/themed/parser.txt.tpl"
 
@@ -851,6 +851,9 @@ for invalid_palette_line in \
   '[nested]' \
   'bad = "value" trailing' \
   'bad = "unsafe\nvalue"' \
+  'bad = "unsafe\u000Avalue"' \
+  'bad = "unsafe\u0001value"' \
+  'bad = "unsafe\U0000007Fvalue"' \
   'bad = "unterminated'; do
   invalid_palette="$SANDBOX/invalid-palette-$RANDOM"
   mkdir -p "$invalid_palette"

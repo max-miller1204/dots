@@ -103,7 +103,8 @@ dots_theme_palette_parse() { # <colors.toml> <callback>
               ((index += 8))
             fi
             codepoint=$((16#$hex))
-            ((codepoint != 0 && codepoint <= 0x10ffff &&
+            (((codepoint == 0x09 || (codepoint >= 0x20 && codepoint != 0x7f)) &&
+              codepoint <= 0x10ffff &&
               (codepoint < 0xd800 || codepoint > 0xdfff))) || {
               dots_theme_palette_error "$file" "$line_number" 'unsupported Unicode scalar escape' || return
             }
