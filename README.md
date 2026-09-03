@@ -1,10 +1,20 @@
 # dots
 
-Personal dotfiles for macOS, Ubuntu, and WSL. Configs are copied, not symlinked, and immutable GitHub Release bundles provide the command runtime. [mise](https://mise.jdx.dev) installs the same tools on every platform.
+Dots manages personal configuration files for macOS, Ubuntu, and Windows
+Subsystem for Linux (WSL).
+Dots copies the configuration files. Dots does not create symbolic links for
+these files.
+Immutable GitHub release bundles provide the command runtime.
+[mise](https://mise.jdx.dev) installs the same tools on each platform.
 
 ## Setup
 
-Install `curl` first. macOS also requires [Homebrew](https://brew.sh) for the Bash command runtime and `flock`; the installer does not change the configured login shell. For broader Bash completion beyond the built-in `dots` commands, install the optional platform framework using the commands in [Shell completion setup](docs/setup.md#optional-bash-completion-framework).
+First, install `curl`. On macOS, also install [Homebrew](https://brew.sh).
+Homebrew supplies Bash for the command runtime. Homebrew also supplies `flock`.
+The installer does not change your configured login shell. The built-in
+completion supports only the `dots` commands. For more Bash completion,
+install the optional platform framework. Use the commands in
+[Shell completion setup](docs/setup.md#optional-bash-completion-framework).
 
 1. Install the official standalone mise release:
 
@@ -21,31 +31,40 @@ Install `curl` first. macOS also requires [Homebrew](https://brew.sh) for the Ba
    exec "$SHELL" -l
    ```
 
-Daily commands run from the packaged release under `~/.local/share/dots`. A Git checkout is only needed for contributing or testing unreleased code; see [Developer mode](docs/setup.md#developer-mode).
+The daily commands use the packaged release in `~/.local/share/dots`. Use a
+Git checkout only to contribute or to test unreleased code. For more
+information, refer to [Developer mode](docs/setup.md#developer-mode).
 
-`mise` must be installed before dots. If Ubuntu already has the apt package, follow [Replacing apt-managed mise](docs/setup.md#replacing-apt-managed-mise) first. The installer is safe to rerun after a failure.
+Install `mise` before you install Dots. If Ubuntu already has the apt package,
+first follow [Replacing apt-managed mise](docs/setup.md#replacing-apt-managed-mise).
+Run the installer again after a failure.
 
 ## Daily use
 
 ```bash
-dots                         # list commands
-dots update                  # update dots and installed tools
-dots update available        # check for published releases
-dots version rollback        # return to the previous runtime release
-dots version prune           # remove inactive verified releases
-dots theme list              # list themes
-dots theme set tokyo-night   # select a theme
+dots                         # List commands
+dots update                  # Update dots and installed tools
+dots update available        # Check for published releases
+dots version rollback        # Return to the previous runtime release
+dots version prune           # Remove inactive verified releases
+dots theme list              # List themes
+dots theme set tokyo-night   # Select a theme
 ```
 
 ## Documentation
 
-- Setup, mise ownership, and troubleshooting: [`docs/setup.md`](docs/setup.md)
-- Commands: [`docs/commands.md`](docs/commands.md)
-- Tool and package management: [`docs/packages.md`](docs/packages.md)
-- Configuration and repository layout: [`docs/file-layout.md`](docs/file-layout.md)
-- Themes: [`docs/themes.md`](docs/themes.md)
-- Migrations and hooks: [`docs/extending.md`](docs/extending.md)
-- Update pipeline: [`docs/update-process.md`](docs/update-process.md)
-- Versioning and publishing releases: [`docs/releases.md`](docs/releases.md)
+- For setup, mise ownership, and troubleshooting, refer to
+  [`docs/setup.md`](docs/setup.md).
+- For commands, refer to [`docs/commands.md`](docs/commands.md).
+- For tool and package management, refer to
+  [`docs/packages.md`](docs/packages.md).
+- For the configuration and repository layout, refer to
+  [`docs/file-layout.md`](docs/file-layout.md).
+- For themes, refer to [`docs/themes.md`](docs/themes.md).
+- For migrations and hooks, refer to [`docs/extending.md`](docs/extending.md).
+- For the update process, refer to
+  [`docs/update-process.md`](docs/update-process.md).
+- For versioning and release publication, refer to
+  [`docs/releases.md`](docs/releases.md).
 
-Run the test suite with `./test/all`.
+To run the test suite, use `./test/all`.
