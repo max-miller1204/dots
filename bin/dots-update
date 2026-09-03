@@ -256,8 +256,8 @@ else
   degraded_steps+=("mise unavailable")
 fi
 
-# 3. Migrations, then the post-update hook: same order as omarchy update.
-# A migration failure must not skip the analyzer and restart report below.
+# 3. Run migrations. Then, run the post-update hook. This order is the same as
+# the Omarchy update order. A migration failure must not prevent later reports.
 migrate_rc=0
 "$SELF_DIR/dots-migrate" || migrate_rc=$?
 if ((migrate_rc == 0)); then

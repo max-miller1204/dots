@@ -12,6 +12,7 @@ fzf = "latest"
 gh = "latest"
 "github:can1357/oh-my-pi" = "latest"
 "github:kunchenguid/no-mistakes" = "latest"
+"github:scop/bash-completion" = { version = "latest", bin_path = "completions", strip_components = 1 }
 go = "latest"
 gum = "latest"
 herdr = "latest"

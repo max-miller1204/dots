@@ -127,6 +127,74 @@ PATH="$completion_prefix/bin:/usr/bin:/bin" DOTS_PATH="$ROOT" TERM=dumb \
   bash "$ROOT/default/bashrc" || fail "interactive Bash did not load completion framework and dots adapter"
 assertions=$((assertions + 1))
 
+# Verify that Bash loads the mise GitHub release when a system framework is
+# already loaded. Also verify that MISE_DATA_DIR specifies the data directory.
+mise_data_dir="$SANDBOX/mise-data"
+mise_completion_dir="$mise_data_dir/installs/github-scop-bash-completion/latest"
+mkdir -p "$mise_completion_dir"
+cat >"$mise_completion_dir/bash_completion" <<'EOF'
+BASH_COMPLETION_VERSINFO=(2 100)
+_mise_completion_loader() { :; }
+EOF
+MISE_DATA_DIR="$mise_data_dir" PATH="$completion_prefix/bin:/usr/bin:/bin" \
+  DOTS_PATH="$ROOT" TERM=dumb "$bash_bin" --noprofile --norc -ic \
+  'BASH_COMPLETION_VERSINFO=(2 99); _system_completion_loader() { :; };
+    source "$1"; [[ ${BASH_COMPLETION_VERSINFO[*]} == "2 100" ]];
+    declare -F _system_completion_loader >/dev/null;
+    declare -F _mise_completion_loader >/dev/null;
+    declare -F _dots_complete >/dev/null; complete -p dots >/dev/null' \
+  bash "$ROOT/default/bashrc" || fail "interactive Bash did not load the mise completion framework first"
+assertions=$((assertions + 1))
+
+# Run this check with DOTS_TEST_REAL_MISE set to the mise executable. It uses
+# the GitHub backend to verify the installed layout and tmux completion.
+if [[ -n ${DOTS_TEST_REAL_MISE:-} ]]; then
+  [[ -x $DOTS_TEST_REAL_MISE ]] || fail "DOTS_TEST_REAL_MISE is not executable"
+  real_mise_home="$SANDBOX/real-mise-home"
+  real_mise_config_dir="$real_mise_home/.config/mise"
+  real_mise_data_dir="$real_mise_home/.local/share/mise"
+  real_mise_cache_dir="$real_mise_home/.cache/mise"
+  real_mise_bin_dir="$real_mise_home/bin"
+  mkdir -p "$real_mise_config_dir" "$real_mise_data_dir" \
+    "$real_mise_cache_dir" "$real_mise_bin_dir"
+  ln -s "$DOTS_TEST_REAL_MISE" "$real_mise_bin_dir/mise"
+  (
+    cd "$real_mise_home"
+    HOME="$real_mise_home" XDG_CONFIG_HOME="$real_mise_home/.config" \
+      MISE_CONFIG_DIR="$real_mise_config_dir" \
+      MISE_GLOBAL_CONFIG_FILE="$real_mise_config_dir/config.toml" \
+      MISE_DATA_DIR="$real_mise_data_dir" MISE_CACHE_DIR="$real_mise_cache_dir" \
+      PATH="$real_mise_bin_dir:$PATH" DOTS_PATH="$ROOT" \
+      bash "$ROOT/migrations/1788459720.sh" >/dev/null
+  ) || fail "mise did not install Bash completion"
+
+  real_completion_root="$real_mise_data_dir/installs/github-scop-bash-completion/latest"
+  [[ -r $real_completion_root/bash_completion &&
+    -d $real_completion_root/completions ]] ||
+    fail "mise did not remove the release archive directory"
+  assertions=$((assertions + 1))
+
+  real_bin_paths=$(HOME="$real_mise_home" \
+    XDG_CONFIG_HOME="$real_mise_home/.config" MISE_CONFIG_DIR="$real_mise_config_dir" \
+    MISE_GLOBAL_CONFIG_FILE="$real_mise_config_dir/config.toml" \
+    MISE_DATA_DIR="$real_mise_data_dir" MISE_CACHE_DIR="$real_mise_cache_dir" \
+    "$DOTS_TEST_REAL_MISE" -C "$real_mise_home" bin-paths)
+  contains_line "$real_bin_paths" "$real_completion_root/completions" \
+    "mise exposes only Bash completion data"
+  excludes_line "$real_bin_paths" "$real_completion_root" \
+    "mise does not expose Bash completion build scripts"
+
+  MISE_DATA_DIR="$real_mise_data_dir" PATH="$completion_prefix/bin:/usr/bin:/bin" \
+    bash --noprofile --norc -c \
+    'BASH_COMPLETION_VERSINFO=(2 99); source "$1";
+      [[ ${BASH_COMPLETION_VERSINFO[*]} != "2 99" ]];
+      declare -F _comp_load >/dev/null; _comp_load tmux;
+      complete -p tmux >/dev/null' \
+    bash "$ROOT/default/bash/shell" ||
+    fail "the installed mise release did not provide tmux completion"
+  assertions=$((assertions + 1))
+fi
+
 # Exercise Bash's current-word filtering through the registered adapter.
 DOTS_PATH="$ROOT" bash --noprofile --norc -c \
   'source "$1"; COMP_WORDS=(dots theme se); COMP_CWORD=2; _dots_complete;

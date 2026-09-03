@@ -5,45 +5,26 @@
 Dots supports macOS, Ubuntu, and Windows Subsystem for Linux (WSL). Install
 `curl` first. On macOS, also install [Homebrew](https://brew.sh). On macOS, Dots
 uses the Homebrew `flock` command. On macOS, Dots also uses Homebrew Bash to run
-commands. Dots does not change the configured login shell. The optional Bash
-completion framework gives more completion functions.
+commands. Dots does not change the configured login shell. The Bash completion
+framework supplies completion for more commands.
 
-### Optional Bash completion framework
+### Bash completion framework
 
-Dots supplies completion for its nested commands. This completion does not
-require an additional package. To get command-specific completion for tools
-such as Git and system utilities, install the `bash-completion` package for
-your platform.
+Dots supplies completion for its nested commands. Dots also uses mise to
+install the latest upstream `bash-completion` release from GitHub. This
+framework supplies completion for commands such as Git and tmux. The
+interactive `~/.bashrc` gives the mise installation precedence, including when
+a system framework is already loaded.
 
-**macOS (Apple Silicon or Intel):**
+The loader honors `MISE_DATA_DIR`. If this variable is not set, the loader uses
+the standard mise data directory below `XDG_DATA_HOME` or `~/.local/share`.
 
-```bash
-brew install bash-completion@2
-```
+If the mise installation is not available, `~/.bashrc` searches for a system
+installation. It searches standard system locations and the prefixes in
+`PATH`. These locations include `/usr`, Homebrew, and Linuxbrew.
 
-**Ubuntu or WSL:**
-
-```bash
-sudo apt-get update
-sudo apt-get install -y bash-completion
-```
-
-For reference, use these commands on other common Linux platforms:
-
-```bash
-# Arch Linux. Omarchy already includes this package.
-sudo pacman -S bash-completion
-
-# Fedora
-sudo dnf install bash-completion
-```
-
-Dots does not automatically install optional system packages. The interactive
-`~/.bashrc` searches standard system locations for completion loaders. The file
-also searches prefixes that are on `PATH`. Thus, the same configuration
-operates with `/usr`, Homebrew, and Linuxbrew. The configuration also loads
-context-sensitive completion for nested `dots` commands. Zsh uses the native
-Zsh completion system. Zsh does not use the `bash-completion` package.
+Dots loads completion for its nested commands after it loads the framework.
+Zsh uses its native completion system and does not use `bash-completion`.
 
 ### Optional Bash login shell on macOS
 

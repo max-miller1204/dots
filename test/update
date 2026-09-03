@@ -20,6 +20,16 @@ echo "stub mise $*"
 EOF
 chmod +x "$SANDBOX/stub/mise"
 
+# The Bash completion migration adds the GitHub release to an existing
+# manifest and requests a shell restart.
+bash_completion_home="$SANDBOX/bash-completion-migration-home"
+mkdir -p "$bash_completion_home"
+HOME="$bash_completion_home" PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$ROOT" \
+  bash "$ROOT/migrations/1788459720.sh" >/dev/null
+[[ -f $bash_completion_home/.local/state/dots/restart-shell-required ]] ||
+  fail "Bash completion migration did not request a shell restart"
+assertions=$((assertions + 1))
+
 # A missing macOS flock is diagnosed without mutating package state.
 flock_stub="$SANDBOX/flock-diagnostic-stub"
 mkdir -p "$flock_stub"
@@ -407,6 +417,13 @@ done <"$normalized_mise"
 [[ ${mise_types[settings.minimum_release_age]:-} == "basic-string" &&
   ${mise_values[settings.minimum_release_age]:-} == "0s" ]] ||
   fail "mise config lost the zero release-age default"
+[[ ${mise_types[tools.github:scop/bash-completion.version]:-} == "basic-string" &&
+  ${mise_values[tools.github:scop/bash-completion.version]:-} == "latest" &&
+  ${mise_types[tools.github:scop/bash-completion.bin_path]:-} == "basic-string" &&
+  ${mise_values[tools.github:scop/bash-completion.bin_path]:-} == "completions" &&
+  ${mise_types[tools.github:scop/bash-completion.strip_components]:-} == "integer" &&
+  ${mise_values[tools.github:scop/bash-completion.strip_components]:-} == "1" ]] ||
+  fail "mise config did not isolate Bash completion files from commands"
 duplicate_table="$SANDBOX/duplicate-table.toml"
 printf '[settings]\nminimum_release_age = "0s"\n[settings]\nother = "value"\n' >"$duplicate_table"
 if normalize_mise_toml "$duplicate_table" >/dev/null 2>&1; then
@@ -470,7 +487,7 @@ for control_location in separator comment suffix; do
     fail "TOML normalizer accepted a control in the $control_location location"
   fi
 done
-assertions=$((assertions + 15))
+assertions=$((assertions + 16))
 
 # --- free-space guard
 DOTS_UPDATE_MIN_FREE_KB=1 "$ROOT/bin/dots-update-requires-free-space" ||
@@ -622,6 +639,7 @@ echo one >"$upstream/file"
 cp -R "$ROOT/bin" "$upstream/bin"
 mkdir -p "$upstream/install" "$upstream/migrations"
 cp -R "$ROOT/install/helpers" "$upstream/install/helpers"
+cp "$ROOT/migrations/1788459720.sh" "$upstream/migrations/"
 git_test -C "$upstream" add .
 git_test -C "$upstream" commit -qm "c1"
 git clone -q "$upstream" "$checkout"
@@ -711,6 +729,14 @@ assertions=$((assertions + 4))
 echo three >"$upstream/file"
 git_test -C "$upstream" commit -qam "c3"
 
+cat >"$SANDBOX/stub/mise" <<'EOF'
+#!/usr/bin/env bash
+echo "stub mise $*"
+printf '%s\n' "$*" >>"$HOME/mise-update-order"
+EOF
+chmod +x "$SANDBOX/stub/mise"
+rm -f "$HOME/mise-update-order"
+
 export DOTS_TEST_REAL_SCRIPT
 DOTS_TEST_REAL_SCRIPT=$(command -v script)
 cat >"$SANDBOX/stub/script" <<'EOF'
@@ -736,12 +762,18 @@ chmod +x "$SANDBOX/stub/script"
 out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update")
 assert_contains "$out" "Update complete." "pipeline completes"
 assert_contains "$out" "stub mise install" "mise sync ran"
+mapfile -t mise_update_order <"$HOME/mise-update-order"
+[[ ${mise_update_order[0]:-} == "install" ]] ||
+  fail "mise install did not run before migrations"
+[[ ${mise_update_order[3]:-} == \
+  "use --global github:scop/bash-completion[bin_path=completions,strip_components=1]@latest" ]] ||
+  fail "Bash completion migration did not run after the mise update"
 [[ -f "$HOME/.local/state/dots/update.log" ]] || fail "update transcript missing"
 grep -q "Update complete." "$HOME/.local/state/dots/update.log" || fail "transcript incomplete"
 grep -q "recorder flush complete" "$HOME/.local/state/dots/update.log" || fail "terminal sidecar preceded recorder flush"
 [[ -f "$HOME/.local/state/dots/update-terminal-status" ]] || fail "recorder return omitted terminal sidecar"
 [[ $(git -C "$checkout" log --oneline -1) == *c3* ]] || fail "update did not pull the new commit"
-assertions=$((assertions + 5))
+assertions=$((assertions + 7))
 
 rc=0
 PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" DOTS_UPDATE_TEST_KILL_AFTER_SCRIPT=1 \
