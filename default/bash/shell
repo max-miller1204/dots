@@ -5,11 +5,14 @@ if [[ -n ${BASH_VERSION:-} ]]; then
   HISTSIZE=32768
   HISTFILESIZE=$HISTSIZE
 
-  # Load the first bash-completion installation found under a prefix already
-  # on PATH. Also cover system packages whose /etc loader does not live below
-  # the /usr prefix used by their commands (for example Fedora and Debian).
+  # Load bash-completion from mise. If this installation is not available,
+  # load the first installation in a prefix on PATH. Also search system paths
+  # that are not below these prefixes (for example, on Fedora and Debian).
   if [[ -z ${BASH_COMPLETION_VERSINFO:-} ]]; then
-    dots_bash_completion_candidates=()
+    dots_mise_data_dir=${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}
+    dots_bash_completion_candidates=(
+      "$dots_mise_data_dir/installs/github-scop-bash-completion/latest/bash_completion"
+    )
     IFS=: read -r -a dots_path_dirs <<<"$PATH"
     for dots_path_dir in "${dots_path_dirs[@]}"; do
       [[ $dots_path_dir == /*/bin ]] || continue
@@ -30,8 +33,8 @@ if [[ -n ${BASH_VERSION:-} ]]; then
         break
       fi
     done
-    unset dots_bash_completion dots_bash_completion_candidates dots_path_dir \
-      dots_path_dirs dots_path_prefix
+    unset dots_bash_completion dots_bash_completion_candidates dots_mise_data_dir \
+      dots_path_dir dots_path_dirs dots_path_prefix
   fi
 elif [[ -n ${ZSH_VERSION:-} ]]; then
   HISTFILE=${ZDOTDIR:-$HOME}/.zsh_history

@@ -10,9 +10,9 @@ Immutable GitHub release bundles provide the command runtime.
 First, install `curl`. On macOS, also install [Homebrew](https://brew.sh).
 Homebrew supplies Bash for the command runtime. Homebrew also supplies `flock`.
 The installer does not change your configured login shell. The built-in
-completion supports only the `dots` commands. For more Bash completion,
-install the optional platform framework. Use the commands in
-[Shell completion setup](docs/setup.md#optional-bash-completion-framework).
+completion supports only the `dots` commands. Dots uses mise to install Bash
+completion for other commands. For more information, refer to
+[Shell completion setup](docs/setup.md#bash-completion-framework).
 
 1. Install the official standalone mise release:
 

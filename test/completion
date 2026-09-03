@@ -127,6 +127,23 @@ PATH="$completion_prefix/bin:/usr/bin:/bin" DOTS_PATH="$ROOT" TERM=dumb \
   bash "$ROOT/default/bashrc" || fail "interactive Bash did not load completion framework and dots adapter"
 assertions=$((assertions + 1))
 
+# Verify that Bash loads the mise GitHub release before a release in a PATH
+# prefix. Also verify that MISE_DATA_DIR can specify a different data directory.
+mise_data_dir="$SANDBOX/mise-data"
+mise_completion_dir="$mise_data_dir/installs/github-scop-bash-completion/latest"
+mkdir -p "$mise_completion_dir"
+cat >"$mise_completion_dir/bash_completion" <<'EOF'
+BASH_COMPLETION_VERSINFO=(2 100)
+_mise_completion_loader() { :; }
+EOF
+MISE_DATA_DIR="$mise_data_dir" PATH="$completion_prefix/bin:/usr/bin:/bin" \
+  DOTS_PATH="$ROOT" TERM=dumb "$bash_bin" --noprofile --norc -ic \
+  'source "$1"; [[ ${BASH_COMPLETION_VERSINFO[*]} == "2 100" ]];
+    declare -F _mise_completion_loader >/dev/null;
+    declare -F _dots_complete >/dev/null; complete -p dots >/dev/null' \
+  bash "$ROOT/default/bashrc" || fail "interactive Bash did not load the mise completion framework first"
+assertions=$((assertions + 1))
+
 # Exercise Bash's current-word filtering through the registered adapter.
 DOTS_PATH="$ROOT" bash --noprofile --norc -c \
   'source "$1"; COMP_WORDS=(dots theme se); COMP_CWORD=2; _dots_complete;
