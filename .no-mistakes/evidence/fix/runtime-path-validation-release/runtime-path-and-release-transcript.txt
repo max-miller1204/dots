@@ -1,0 +1,16 @@
+Malformed repair install
+before: bad:path
+exit: 1
+stderr: Invalid dots runtime path file: <sandbox-home>/.config/dots/path
+after: bad:path
+
+Shared reader contract
+configured path: rejected
+source path: rejected
+
+Release payload
+dots-release-v1
+version=1.1.1
+archive=dots-1.1.1.tar.gz
+sha256=92cd5f625d2fb7ec2c95ca42743b255dd10f6f2b5cbd6f8f7bcc665d458c4d17
+archive version: 1.1.1
