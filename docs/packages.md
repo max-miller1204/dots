@@ -26,7 +26,7 @@ Then commit the manifest change.
 
 ## Versions
 
-The manifest currently uses rolling versions for command-line tools and the active LTS line for Node. Mise itself is not pinned; the official standalone installation tracks current releases through `mise self-update`.
+The manifest currently uses rolling versions for command-line tools and the active LTS line for Node. It deliberately sets `minimum_release_age = "0s"` so newly published tool versions are immediately eligible on every managed machine. Mise itself is not pinned; the official standalone installation tracks current releases through `mise self-update`.
 
 Use these commands to inspect state:
 
@@ -49,7 +49,10 @@ Stepstone is maintained as part of this setup but has a low npm download count. 
 "npm:stepstone" = { version = "latest", allow_low_downloads = true }
 ```
 
-That option approves only the requested Stepstone package for Aube's download-count gate. It does not disable the gate globally and does not automatically exempt transitive dependencies.
+That option approves only the requested Stepstone package for Aube's
+download-count gate. It does not disable that gate globally or automatically
+exempt transitive dependencies. The separate global release-age policy remains
+`0s` by design.
 
 ## Fonts
 

@@ -1,6 +1,8 @@
 # Shared helpers for immutable, versioned dots release bundles.
 # Callers must source install/helpers/files.sh first.
 
+source "${BASH_SOURCE[0]%/*}/archive.sh"
+
 DOTS_RELEASE_HOME=${DOTS_RELEASE_HOME:-$HOME/.local/share/dots}
 DOTS_RELEASES_DIR="$DOTS_RELEASE_HOME/releases"
 DOTS_RELEASE_CURRENT="$DOTS_RELEASE_HOME/current"
@@ -63,27 +65,20 @@ dots_release_is_stable_mode() {
 }
 
 dots_release_lock_fd_valid() {
-  local lock=${DOTS_UPDATE_LOCK:-$HOME/.local/state/dots/update.lock} lock_id fd_id
+  local lock=${DOTS_UPDATE_LOCK:-$HOME/.local/state/dots/update.lock}
 
   [[ ${DOTS_UPDATE_LOCK_PID:-} == "$$" ]] || return 1
   { true >&9; } 2>/dev/null || return 1
   command -v flock >/dev/null 2>&1 || return 1
   dots_file_assert_safe_parents "$lock" "$HOME" >/dev/null 2>&1 || return 1
-  if [[ $(uname -s) == "Darwin" ]]; then
-    lock_id=$(stat -f '%d:%i' "$lock" 2>/dev/null) || return 1
-    fd_id=$(perl -e 'open(my $fh, "<&=9") or exit 1; my @s = stat($fh); print "$s[0]:$s[1]"' 2>/dev/null) || return 1
-  else
-    lock_id=$(stat -Lc '%d:%i' "$lock" 2>/dev/null) || return 1
-    fd_id=$(stat -Lc '%d:%i' /proc/self/fd/9 2>/dev/null) || return 1
-  fi
-  [[ $lock_id == "$fd_id" ]] || return 1
+  dots_file_path_matches_fd "$lock" 9 >/dev/null 2>&1 || return 1
   flock -n 9
 }
 
 dots_release_write_path() { # write_path <path>
   local path=$1 source
 
-  [[ -n $path && $path != *$'\n'* && $path != *:* ]] || {
+  [[ $path == /* && $path != *$'\n'* && $path != *:* ]] || {
     echo "Invalid dots path: $path" >&2
     return 1
   }
@@ -100,7 +95,7 @@ dots_release_write_source_path() { # write_source_path <checkout>
   local checkout=$1 source
 
   checkout=$(cd -- "$checkout" && pwd -P) || return 1
-  [[ $checkout != *$'\n'* && $checkout != *:* ]] || {
+  [[ $checkout == /* && $checkout != *$'\n'* && $checkout != *:* ]] || {
     echo "Invalid dots source path: $checkout" >&2
     return 1
   }
@@ -177,12 +172,29 @@ _dots_release_pointer_version() {
   printf '%s\n' "$version"
 }
 
+_dots_release_pointer_is_dangling() { # _pointer_is_dangling <current|previous>
+  local pointer=$1 target
+
+  [[ $pointer == "$DOTS_RELEASE_CURRENT" || $pointer == "$DOTS_RELEASE_PREVIOUS" ]] || return 1
+  [[ -L $pointer ]] || return 1
+  target=$(readlink "$pointer") || return 1
+  [[ $target =~ ^releases/(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$ ]] || return 1
+  [[ ! -e "$DOTS_RELEASE_HOME/$target" && ! -L "$DOTS_RELEASE_HOME/$target" ]]
+}
+
 dots_release_reconcile_pointers() {
-  local transaction=$DOTS_RELEASE_POINTER_TRANSACTION current previous target
+  local transaction=$DOTS_RELEASE_POINTER_TRANSACTION current previous target pointer
   local actual_current="-" actual_previous="-" desired_previous release_version
   local -a lines=()
 
-  [[ -e $transaction || -L $transaction ]] || return 0
+  if [[ ! -e $transaction && ! -L $transaction ]]; then
+    for pointer in "$DOTS_RELEASE_CURRENT" "$DOTS_RELEASE_PREVIOUS"; do
+      if _dots_release_pointer_is_dangling "$pointer"; then
+        dots_file_remove "$pointer" discard "$DOTS_RELEASE_HOME" || return 1
+      fi
+    done
+    return 0
+  fi
   [[ -f $transaction && ! -L $transaction ]] || {
     echo "Refusing unsafe dots release pointer transaction: $transaction" >&2
     return 1
@@ -205,11 +217,17 @@ dots_release_reconcile_pointers() {
   done
 
   actual_current=$(_dots_release_pointer_version "$DOTS_RELEASE_CURRENT" 2>/dev/null) || {
-    [[ ! -e $DOTS_RELEASE_CURRENT && ! -L $DOTS_RELEASE_CURRENT ]] || return 1
+    if [[ -e $DOTS_RELEASE_CURRENT || -L $DOTS_RELEASE_CURRENT ]]; then
+      _dots_release_pointer_is_dangling "$DOTS_RELEASE_CURRENT" || return 1
+      dots_file_remove "$DOTS_RELEASE_CURRENT" discard "$DOTS_RELEASE_HOME" || return 1
+    fi
     actual_current="-"
   }
   actual_previous=$(_dots_release_pointer_version "$DOTS_RELEASE_PREVIOUS" 2>/dev/null) || {
-    [[ ! -e $DOTS_RELEASE_PREVIOUS && ! -L $DOTS_RELEASE_PREVIOUS ]] || return 1
+    if [[ -e $DOTS_RELEASE_PREVIOUS || -L $DOTS_RELEASE_PREVIOUS ]]; then
+      _dots_release_pointer_is_dangling "$DOTS_RELEASE_PREVIOUS" || return 1
+      dots_file_remove "$DOTS_RELEASE_PREVIOUS" discard "$DOTS_RELEASE_HOME" || return 1
+    fi
     actual_previous="-"
   }
 
@@ -243,8 +261,10 @@ dots_release_atomic_pointer() { # atomic_pointer <current|previous> <version>
   dots_release_validate_version "$version" || return 1
   dots_release_assert_store || return 1
   if [[ -e $pointer || -L $pointer ]] && ! _dots_release_pointer_version "$pointer" >/dev/null 2>&1; then
-    echo "Refusing unsafe dots release pointer: $pointer" >&2
-    return 1
+    if ! _dots_release_pointer_is_dangling "$pointer"; then
+      echo "Refusing unsafe dots release pointer: $pointer" >&2
+      return 1
+    fi
   fi
   temp_dir=$(mktemp -d "$DOTS_RELEASE_HOME/.pointer.XXXXXX") || return 1
   temp="$temp_dir/link"
@@ -429,7 +449,7 @@ dots_release_verify_installed() { # verify_installed <release-dir> <version>
 
 dots_release_install_archive() { # install_archive <version> <archive> <sha256>
   local version=$1 archive=$2 expected_sha=$3 actual_sha stage extracted ready final marker candidate
-  local entry verbose_listing listing_line entry_type
+  local entry
 
   dots_release_validate_version "$version" || {
     echo "Invalid dots release version: $version" >&2
@@ -470,18 +490,14 @@ dots_release_install_archive() { # install_archive <version> <archive> <sha256>
     fi
   done
 
-  if ! verbose_listing=$(tar -tvzf "$archive"); then
-    echo "Cannot read dots release archive: $archive" >&2
+  if ! dots_archive_regular_entries_only "$archive"; then
+    if [[ $DOTS_ARCHIVE_VALIDATION_ERROR == "unreadable" ]]; then
+      echo "Cannot read dots release archive: $archive" >&2
+    else
+      echo "Release archive contains a link or special entry." >&2
+    fi
     return 1
   fi
-  while IFS= read -r listing_line; do
-    [[ -n $listing_line ]] || continue
-    entry_type=${listing_line:0:1}
-    if [[ $entry_type != "-" && $entry_type != "d" ]]; then
-      echo "Release archive contains a link or special entry." >&2
-      return 1
-    fi
-  done <<<"$verbose_listing"
   while IFS= read -r entry; do
     [[ -n $entry ]] || continue
     if [[ $entry == /* || $entry == ".." || $entry == ../* || $entry == */../* || $entry == */.. ||

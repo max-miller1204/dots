@@ -5,9 +5,9 @@
 # dots:hidden=true
 #
 # flock(1) holds the lock on fd 9's open file description, which the exec'd
-# command inherits: the kernel releases it when the last holder exits — any
-# exit, including SIGKILL — so there is no stale state to reclaim and no
-# signal forwarding to get right. Ubuntu/WSL ship flock in util-linux; on
+# command inherits. The kernel releases it when the last holder exits,
+# including after SIGKILL, so there is no stale state to reclaim and no signal
+# forwarding to get right. Ubuntu/WSL ship flock in util-linux; on
 # macOS install/config/flock.sh installs the discoteq port (brew), whose
 # fd mode, -n, and -E behavior we verified against util-linux's. The lock
 # path avoids TMPDIR, which differs between GUI and cron/ssh contexts on
@@ -24,9 +24,12 @@ SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
 if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
-  exec "$DOTS_PATH/bin/dots-update-lock" "$@"
+  exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"
 fi
 source "$DOTS_PATH/install/helpers/files.sh"
+if ! command -v flock >/dev/null 2>&1; then
+  source "$DOTS_PATH/install/config/flock.sh"
+fi
 "$SELF_DIR/dots-ensure-flock"
 
 LOCK="${DOTS_UPDATE_LOCK:-$HOME/.local/state/dots/update.lock}"
@@ -45,14 +48,7 @@ if [[ -L $LOCK || ! -f $LOCK ]]; then
   echo "Update lock path changed during open: $LOCK" >&2
   exit 1
 fi
-if [[ $(uname -s) == "Darwin" ]]; then
-  lock_id=$(stat -f '%d:%i' "$LOCK")
-  fd_id=$(perl -e 'open(my $fh, "<&=9") or exit 1; my @s = stat($fh); print "$s[0]:$s[1]"')
-else
-  lock_id=$(stat -Lc '%d:%i' "$LOCK")
-  fd_id=$(stat -Lc '%d:%i' /proc/self/fd/9)
-fi
-if [[ $lock_id != "$fd_id" ]]; then
+if ! dots_file_path_matches_fd "$LOCK" 9; then
   echo "Update lock path changed during open: $LOCK" >&2
   exit 1
 fi
@@ -72,7 +68,7 @@ elif ((rc != 0)); then
   exit 1
 fi
 
-# Holder breadcrumb for the refusal message above — informational only. Append
+# Holder breadcrumb for the refusal message above: informational only. Append
 # through the verified fd; never reopen the pathname after validation.
 printf '%s\n' "$$" >&9
 

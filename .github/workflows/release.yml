@@ -28,20 +28,30 @@ jobs:
       - name: Build and smoke-test release artifact
         run: ./scripts/build-release.sh "$GITHUB_REF_NAME" "${RUNNER_TEMP}/dist"
 
+      - name: Upload tested release artifacts
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-artifacts
+          path: ${{ runner.temp }}/dist/
+          if-no-files-found: error
+
   publish:
     needs: test
     permissions:
       contents: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - name: Build release artifacts
-        run: ./scripts/build-release.sh "$GITHUB_REF_NAME"
+      - name: Download tested release artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-artifacts
+          path: dist
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
             "dist/dots-${GITHUB_REF_NAME#v}.tar.gz" \

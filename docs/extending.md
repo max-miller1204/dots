@@ -10,12 +10,21 @@ $EDITOR "migrations/$(date +%s).sh"
 
 Migrations must be idempotent. `dots migrate` serializes execution and records successful completion under `~/.local/state/dots/migrations/`. `dots update` runs pending migrations automatically. A fresh installation already contains the current repository state, so it marks all shipped migrations complete.
 
+If a migration fails, dots leaves it pending, continues with later migrations,
+and returns the first failure status after the pass. A later run retries every
+failed migration.
+
 Useful commands:
 
 ```bash
 dots migrate --pending
 dots migrate
 ```
+
+`--pending` is a nonblocking status check: it exits `0` and lists pending files,
+`1` when none are pending, and `2` when another migration owns the lock or the
+marker state is unsafe or corrupt. Completion markers are empty regular files;
+nonempty files, symlinks, and other occupants are refused.
 
 If a migration changes something already loaded, such as shell configuration, create a restart marker:
 
@@ -31,7 +40,7 @@ User hook scripts live under `~/.config/dots/hooks/<event>.d/`. Supported events
 
 - `post-install`
 - `post-update`
-- `theme-set` — receives the selected theme name as `$1`
+- `theme-set`: receives the selected theme name as `$1`
 
 Install a script with:
 

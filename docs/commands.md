@@ -8,6 +8,7 @@ Run `dots` for the complete generated command listing or `dots help <group>` for
 | `dots install --developer` | Install directly from the current checkout |
 | `dots update` | Update the stable release or dev checkout, then tools and migrations |
 | `dots update available` | Report a published release or pending dev commits |
+| `dots version` | Print the active dots version and runtime mode |
 | `dots version install [version]` | Install and activate a release, then converge tools and migrations |
 | `dots version adopt` | Move a checkout-backed install to stable and converge it |
 | `dots version list` | List releases (`*` current, `-` previous, `!` invalid) |
@@ -32,8 +33,8 @@ Run `dots` for the complete generated command listing or `dots help <group>` for
 
 `dots update available` uses distinct statuses for scripts and prompt integrations:
 
-- `0` — updates are available
-- `1` — the installed release or developer checkout is current
-- `2` — release metadata or developer upstream state cannot be determined
+- `0`: updates are available
+- `1`: the installed release or developer checkout is current
+- `2`: release metadata or developer upstream state cannot be determined
 
 See [`docs/update-process.md`](update-process.md) for the full update order and failure behavior.

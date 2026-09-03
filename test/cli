@@ -14,7 +14,11 @@ for f in "$ROOT"/bin/*; do
 done
 while IFS= read -r f; do
   bash -n "$f" || fail "syntax error in $f"
-done < <(find "$ROOT/install" "$ROOT/test" -type f \( -name '*.sh' -o -name 'cli' -o -name 'update' -o -name 'all' \))
+done < <(
+  find "$ROOT/install" "$ROOT/migrations" "$ROOT/scripts" -type f -name '*.sh'
+  printf '%s\n' "$ROOT/test/all" "$ROOT/test/cli" "$ROOT/test/completion" \
+    "$ROOT/test/install" "$ROOT/test/release" "$ROOT/test/update"
+)
 assertions=$((assertions + 1))
 
 setup_sandbox
@@ -49,11 +53,18 @@ assertions=$((assertions + 1))
 out=$("$ROOT/bin/dots" version)
 assert_contains "$out" "dots " "dots version routes"
 
-# Router: unknown command errors
+# Router: unknown and empty commands error cleanly.
 if "$ROOT/bin/dots" no-such-thing >/dev/null 2>&1; then
   fail "unknown command should exit non-zero"
 fi
-assertions=$((assertions + 1))
+empty_error=""
+if empty_error=$("$ROOT/bin/dots" "" 2>&1); then
+  fail "empty command should exit non-zero"
+fi
+case $empty_error in
+  *"bad array subscript"*) fail "empty command triggered an associative-array error" ;;
+esac
+assertions=$((assertions + 2))
 
 # Router: `<command> --help` describes the command instead of running it.
 # Greedy routing used to hand the flag straight to the command, so
@@ -89,7 +100,8 @@ assert_contains "$out" "pkg-add" "group --help lists subcommands"
 # semicolon inside one example must not split it -- IFS=';;' would, because
 # IFS holds a set of single characters rather than a delimiter string.
 tmpbin=$SANDBOX/probe-repo/bin
-mkdir -p "$tmpbin"
+mkdir -p "$tmpbin" "$SANDBOX/probe-repo/install/helpers"
+cp "$ROOT/install/helpers/metadata.sh" "$SANDBOX/probe-repo/install/helpers/metadata.sh"
 cat >"$tmpbin/dots-semicolon-probe" <<'PROBE'
 #!/usr/bin/env bash
 # dots:summary=Probe for separator handling
@@ -114,7 +126,32 @@ DOTS_PATH="$ROOT" bash -c 'unset -f n 2>/dev/null || true; source "$1"; ! declar
   bash "$ROOT/default/bashrc" || fail "non-interactive bashrc loaded interactive functions"
 PATH="/usr/bin:/bin" DOTS_PATH="$ROOT" bash -c 'source "$1"; [[ $PATH == "$DOTS_PATH/bin:"* ]]' \
   bash "$ROOT/default/bashrc" || fail "non-interactive bashrc missed env bootstrap"
-assertions=$((assertions + 2))
+PATH="/usr/bin:$ROOT/bin:$HOME/.local/bin" DOTS_PATH="$ROOT" "$BASH" -c \
+  'source "$1"; source "$1"; [[ $PATH == "$DOTS_PATH/bin:"* ]] &&
+    [[ $(tr ":" "\n" <<<"$PATH" | grep -Fxc "$DOTS_PATH/bin") == 1 ]]' \
+  bash "$ROOT/default/bash/env-bootstrap" || fail "re-sourcing bootstrap did not keep dots bin first and unique"
+missing_runtime_home="$SANDBOX/missing-runtime-home"
+mkdir -p "$missing_runtime_home"
+missing_runtime_error=$(HOME="$missing_runtime_home" PATH=/usr/bin:/bin bash -c \
+  'source "$1"' bash "$ROOT/default/bashrc" 2>&1) || fail "bashrc failed when runtime was missing"
+[[ -z $missing_runtime_error ]] || fail "bashrc reported a missing runtime: $missing_runtime_error"
+assertions=$((assertions + 4))
+
+# Non-interactive Zsh reads ~/.zshenv rather than ~/.zshrc, so its shared
+# command environment must be installed there without loading interactive UX.
+if command -v zsh >/dev/null 2>&1; then
+  zsh_env_home="$SANDBOX/zsh-env-home"
+  mkdir -p "$zsh_env_home/.config/dots"
+  printf '%s\n' "$ROOT" >"$zsh_env_home/.config/dots/path"
+  cp "$ROOT/default/zshenv" "$zsh_env_home/.zshenv"
+  HOME="$zsh_env_home" PATH=/usr/bin:/bin zsh -c \
+    '[[ $DOTS_PATH == "$1" && $PATH == "$DOTS_PATH/bin:"* ]] && (( ! $+functions[n] ))' \
+    zsh "$ROOT" || fail "non-interactive Zsh missed the shared environment bootstrap"
+  missing_zsh_error=$(HOME="$missing_runtime_home" PATH=/usr/bin:/bin zsh -d -f -c \
+    'source "$1"' zsh "$ROOT/default/zshrc" 2>&1) || fail "zshrc failed when runtime was missing"
+  [[ -z $missing_zsh_error ]] || fail "zshrc reported a missing runtime: $missing_zsh_error"
+  assertions=$((assertions + 2))
+fi
 
 # Interactive Zsh discovers both native completion conventions under prefixes
 # on PATH and initializes compdef before third-party integrations consume it.
@@ -157,6 +194,19 @@ case "$alias_out" in
 esac
 assert_contains "$alias_out" "--group-directories-first" "eza aliases preserve directory grouping"
 assert_contains "$alias_out" "--tree --level=2 --long --git" "eza tree alias preserves portable options"
+assertions=$((assertions + 1))
+
+# Linux open detaches xdg-open without registering a visible interactive job.
+open_stub="$SANDBOX/open-stub"
+mkdir -p "$open_stub"
+printf '#!/usr/bin/env bash\nprintf "Linux\\n"\n' >"$open_stub/uname"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$open_stub/xdg-open"
+chmod +x "$open_stub/uname" "$open_stub/xdg-open"
+open_out=$(PATH="$open_stub:/usr/bin:/bin" bash --noprofile --norc -ic \
+  'source "$1"; open https://example.invalid' bash "$ROOT/default/bash/functions" 2>&1)
+if grep -Eq '^\[[0-9]+\] [0-9]+$' <<<"$open_out"; then
+  fail "open exposed xdg-open as an interactive shell job: $open_out"
+fi
 assertions=$((assertions + 1))
 
 # Prompt integrations must preserve mise, Starship, and zoxide hooks together.
@@ -237,6 +287,13 @@ printf 'bad:path\n' >"$HOME/.config/dots/path"
 if env -u DOTS_PATH "$ROOT/bin/dots-theme-list" >/dev/null 2>&1; then
   fail "direct command accepted malformed checkout path data"
 fi
+printf 'relative/runtime\n' >"$HOME/.config/dots/path"
+if env -u DOTS_PATH "$ROOT/bin/dots-path-resolve" >/dev/null 2>&1; then
+  fail "path resolver accepted a relative runtime path"
+fi
+env -u DOTS_PATH PATH=/usr/bin:/bin bash -c \
+  'source "$1"; [[ $DOTS_PATH == "$HOME/dotfiles" ]]' \
+  bash "$ROOT/default/bash/env-bootstrap" || fail "shell bootstrap accepted a relative runtime path"
 printf '%s\n\n' "$serialized_repo" >"$HOME/.config/dots/path"
 env -u DOTS_PATH PATH=/usr/bin:/bin bash -c 'source "$1"; [[ $DOTS_PATH == "$HOME/dotfiles" ]]' \
   bash "$ROOT/default/bash/env-bootstrap" || fail "Bash bootstrap accepted a multiline checkout path"
@@ -310,7 +367,7 @@ for startup_shell in "${startup_shells[@]}"; do
 done
 rm "$HOME/.config/dots/path"
 printf '%s\n' "$ROOT" >"$HOME/.config/dots/path"
-assertions=$((assertions + 21))
+assertions=$((assertions + 23))
 
 # Hooks continue after one failure but report aggregate failure to callers.
 mkdir -p "$HOME/.config/dots/hooks/audit.d"
@@ -388,16 +445,38 @@ fi
 if "$ROOT/bin/dots-hook-install" ../escape "$hook_source" >/dev/null 2>&1; then
   fail "hook install accepted an unsafe event"
 fi
+if "$ROOT/bin/dots-hook" ../escape >/dev/null 2>&1; then
+  fail "hook runner accepted an unsafe event"
+fi
 rm "$HOME/.config/dots/hooks"
 mv "$HOME/.config/dots/hooks.saved" "$HOME/.config/dots/hooks"
-assertions=$((assertions + 5))
+assertions=$((assertions + 6))
 
 # Reinstall --force also replaces links without touching their targets.
 printf 'keep reinstall target\n' >"$HOME/symlink-targets/starship"
 ln -s "$HOME/symlink-targets/starship" "$HOME/.config/starship.toml"
+printf 'custom zsh environment\n' >"$HOME/.zshenv"
 "$ROOT/bin/dots-reinstall-configs" --force >/dev/null
 [[ $(cat "$HOME/symlink-targets/starship") == "keep reinstall target" ]] || fail "reinstall overwrote symlink target"
 [[ -f "$HOME/.config/starship.toml" && ! -L "$HOME/.config/starship.toml" ]] || fail "reinstall did not replace symlink safely"
+cmp -s "$HOME/.zshenv" "$ROOT/default/zshenv" || fail "reinstall did not reset the Zsh environment bootstrap"
+assertions=$((assertions + 3))
+
+# Config discovery must finish successfully before reinstalling any file.
+broken_find="$SANDBOX/broken-config-find"
+mkdir -p "$broken_find"
+cat >"$broken_find/find" <<'EOF'
+#!/usr/bin/env bash
+printf './starship.toml\0'
+exit 7
+EOF
+chmod +x "$broken_find/find"
+printf 'keep after discovery failure\n' >"$HOME/.config/starship.toml"
+if PATH="$broken_find:$PATH" "$ROOT/bin/dots-reinstall-configs" --force >/dev/null 2>&1; then
+  fail "reinstall accepted failed config discovery"
+fi
+[[ $(cat "$HOME/.config/starship.toml") == "keep after discovery failure" ]] ||
+  fail "reinstall changed config before discovery completed"
 assertions=$((assertions + 2))
 
 # A SIGKILL before discard publication leaves the old destination intact.
@@ -616,7 +695,8 @@ mkdir -p "$no_jq_repo/bin" "$no_jq_repo/install/helpers" "$activation_generation
 ln -s 'theme-generations/generation.TEST' "$activation_home/.local/state/dots/current"
 printf 'dots-theme-generation-v1\n' >"$activation_generation/.dots-theme-generation"
 printf 'tokyo-night\n' >"$activation_generation/theme.name"
-cp "$ROOT/install/helpers/files.sh" "$no_jq_repo/install/helpers/files.sh"
+cp "$ROOT/install/helpers/files.sh" "$ROOT/install/helpers/theme-generation.sh" \
+  "$ROOT/install/helpers/theme-sync.sh" "$no_jq_repo/install/helpers/"
 cp "$ROOT/bin/dots-theme-sync-pi" "$ROOT/bin/dots-theme-sync-claude" \
   "$ROOT/bin/dots-theme-source-valid" "$ROOT/bin/dots-path-resolve" "$no_jq_repo/bin/"
 printf '#!/usr/bin/env bash\nexit 1\n' >"$no_jq_repo/bin/dots-cmd-present"
@@ -663,21 +743,22 @@ fi
 [[ ! -e "$linked_app_target/themes/dots-system.theme" ]] || fail "btop sync wrote through config symlink"
 assertions=$((assertions + 12))
 
-# Live tmux synchronization honors explicit selection foreground/background,
-# matching the generated tmux.conf used by new servers.
+# Rendering consumes a final palette assignment without requiring a newline,
+# and live tmux synchronization sources the rendered user override verbatim.
 tmux_home="$SANDBOX/tmux-sync-home"
 tmux_generation="$tmux_home/.local/state/dots/theme-generations/generation.TEST"
-mkdir -p "$tmux_generation/theme" "$SANDBOX/tmux-stub"
+mkdir -p "$tmux_generation/theme" "$tmux_home/.config/dots/themed" "$SANDBOX/tmux-stub"
 ln -s 'theme-generations/generation.TEST' "$tmux_home/.local/state/dots/current"
 printf 'dots-theme-generation-v1\n' >"$tmux_generation/.dots-theme-generation"
 printf 'tokyo-night\n' >"$tmux_generation/theme.name"
-cat >"$tmux_generation/theme/colors.toml" <<'EOF'
-foreground = "#111111"
-background = "#222222"
-selection = "#333333"
-selection_background = "#444444"
-selection_foreground = "#555555"
-EOF
+cp "$ROOT/themes/tokyo-night/colors.toml" "$tmux_generation/theme/colors.toml"
+printf 'custom = "#abcdef"' >>"$tmux_generation/theme/colors.toml"
+printf 'set-option -g status-style "fg={{ custom }}"\n' >\
+  "$tmux_home/.config/dots/themed/tmux.conf.tpl"
+HOME="$tmux_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-set-templates" \
+  "$tmux_generation/theme"
+grep -q 'status-style "fg=#abcdef"' "$tmux_generation/theme/tmux.conf" ||
+  fail "theme renderer skipped an unterminated final palette assignment"
 cat >"$SANDBOX/tmux-stub/tmux" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$HOME/tmux-calls"
@@ -686,8 +767,13 @@ EOF
 chmod +x "$SANDBOX/tmux-stub/tmux"
 HOME="$tmux_home" DOTS_PATH="$ROOT" PATH="$SANDBOX/tmux-stub:$PATH" \
   "$ROOT/bin/dots-theme-sync-tmux"
-grep -q 'mode-style fg=#555555,bg=#444444' "$tmux_home/tmux-calls" || fail "live tmux ignored explicit selection colors"
-assertions=$((assertions + 1))
+grep -Fq "source-file $tmux_home/.local/state/dots/current/theme/tmux.conf" \
+  "$tmux_home/tmux-calls" ||
+  fail "live tmux did not source the generated user template override"
+if grep -q '^set-option ' "$tmux_home/tmux-calls"; then
+  fail "live tmux duplicated generated config with hardcoded options"
+fi
+assertions=$((assertions + 3))
 
 # Foreign files and links at integration targets are never replaced.
 rm "$HOME/.config/btop/themes/dots-system.theme" "$HOME/.config/nvim/lua/plugins/dots-system.lua"
@@ -997,10 +1083,15 @@ printf '%s\n' "$SANDBOX/repo" >"$HOME/.config/dots/path"
 mkdir -p "$DOTS_MIGRATION_STATE"
 printf 'external marker\n' >"$SANDBOX/external-migration-marker"
 ln -s "$SANDBOX/external-migration-marker" "$DOTS_MIGRATION_STATE/1700000000.sh"
-if DOTS_PATH="$SANDBOX/repo" "$ROOT/bin/dots-migrate" --pending >/dev/null 2>&1; then
-  fail "migration check accepted a marker symlink"
-fi
+rc=0
+DOTS_PATH="$SANDBOX/repo" "$ROOT/bin/dots-migrate" --pending >/dev/null 2>&1 || rc=$?
+((rc == 2)) || fail "unsafe migration marker should make pending state indeterminate (got $rc)"
 [[ $(cat "$SANDBOX/external-migration-marker") == "external marker" ]] || fail "migration check altered marker target"
+rm "$DOTS_MIGRATION_STATE/1700000000.sh"
+printf 'not-an-empty-marker\n' >"$DOTS_MIGRATION_STATE/1700000000.sh"
+rc=0
+DOTS_PATH="$SANDBOX/repo" "$ROOT/bin/dots-migrate" --pending >/dev/null 2>&1 || rc=$?
+((rc == 2)) || fail "corrupt regular marker should make pending state indeterminate (got $rc)"
 rm "$DOTS_MIGRATION_STATE/1700000000.sh"
 out=$(DOTS_PATH="$SANDBOX/repo" "$ROOT/bin/dots-migrate" --pending)
 assert_contains "$out" "1700000000.sh" "pending migration listed"
@@ -1010,7 +1101,34 @@ DOTS_PATH="$SANDBOX/repo" "$ROOT/bin/dots-migrate" >/dev/null
 if DOTS_PATH="$SANDBOX/repo" "$ROOT/bin/dots-migrate" --pending >/dev/null; then
   fail "migration still pending after run"
 fi
-assertions=$((assertions + 5))
+assertions=$((assertions + 6))
+
+# Pending checks never wait behind a running migration and report the state as
+# indeterminate rather than claiming there are no migrations.
+exec 7>>"$DOTS_MIGRATION_STATE/migrate.lock"
+flock 7
+pending_status="$SANDBOX/pending-migration-status"
+(
+  rc=0
+  DOTS_PATH="$SANDBOX/repo" "$ROOT/bin/dots-migrate" --pending >/dev/null 2>&1 || rc=$?
+  printf '%s\n' "$rc" >"$pending_status"
+) &
+pending_pid=$!
+for ((i = 0; i < 20; i++)); do
+  [[ -f $pending_status ]] && break
+  sleep 0.01
+done
+if [[ ! -f $pending_status ]]; then
+  kill "$pending_pid" 2>/dev/null || true
+  wait "$pending_pid" 2>/dev/null || true
+  fail "pending migration check blocked on the migration lock"
+fi
+wait "$pending_pid"
+rc=$(<"$pending_status")
+((rc == 2)) || fail "locked pending migration check should be indeterminate (got $rc)"
+flock -u 7
+exec 7>&-
+assertions=$((assertions + 1))
 
 # Standalone migration runs serialize their marker check and execution.
 mkdir -p "$SANDBOX/concurrent-repo/migrations" "$SANDBOX/concurrent-repo/bin" \
@@ -1034,6 +1152,46 @@ wait "$migrate_pid_a"
 wait "$migrate_pid_b"
 [[ $(wc -l <"$HOME/concurrent-migration-proof" | tr -d ' ') == "1" ]] || fail "concurrent migration executed more than once"
 assertions=$((assertions + 1))
+
+# A failed migration remains pending without preventing later migrations from
+# committing their own successful markers.
+printf 'exit 7\n' >"$SANDBOX/concurrent-repo/migrations/1700000002.sh"
+printf 'touch "$HOME/later-migration-proof"\n' >"$SANDBOX/concurrent-repo/migrations/1700000003.sh"
+rc=0
+DOTS_PATH="$SANDBOX/concurrent-repo" DOTS_MIGRATION_STATE="$concurrent_state" \
+  "$ROOT/bin/dots-migrate" >/dev/null 2>&1 || rc=$?
+((rc == 7)) || fail "migration batch did not preserve its failure status (got $rc)"
+[[ ! -e $concurrent_state/1700000002.sh ]] || fail "failed migration was marked complete"
+[[ -f $HOME/later-migration-proof && -f $concurrent_state/1700000003.sh ]] ||
+  fail "later migration did not complete after an earlier failure"
+assertions=$((assertions + 3))
+
+# Standalone migrate reports restart markers, while dots update retains that
+# reporting step until the end of its pipeline.
+restart_repo="$SANDBOX/restart-migrate-repo"
+restart_state="$HOME/.local/state/dots/restart-migrations"
+mkdir -p "$restart_repo/migrations" "$restart_repo/bin" "$restart_repo/install/helpers"
+cp "$ROOT/bin/dots-migrate" "$ROOT/bin/dots-path-resolve" "$ROOT/bin/dots-ensure-flock" \
+  "$restart_repo/bin/"
+cp "$ROOT/install/helpers/files.sh" "$restart_repo/install/helpers/files.sh"
+printf 'touch "$HOME/restart-migration-one"\n' >"$restart_repo/migrations/1700000010.sh"
+cat >"$restart_repo/bin/dots-update-restart" <<'EOF'
+#!/usr/bin/env bash
+printf 'reported\n' >>"$HOME/restart-reports"
+EOF
+chmod +x "$restart_repo/bin/dots-update-restart"
+printf '%s\n' "$restart_repo" >"$HOME/.config/dots/path"
+DOTS_PATH="$restart_repo" DOTS_MIGRATION_STATE="$restart_state" \
+  "$ROOT/bin/dots-migrate" >/dev/null
+[[ $(wc -l <"$HOME/restart-reports" | tr -d ' ') == "1" ]] ||
+  fail "standalone migration did not report restart markers"
+printf 'touch "$HOME/restart-migration-two"\n' >"$restart_repo/migrations/1700000011.sh"
+DOTS_PATH="$restart_repo" DOTS_MIGRATION_STATE="$restart_state" DOTS_UPDATE_LOCK_PID=123 \
+  "$ROOT/bin/dots-migrate" >/dev/null
+[[ -f $HOME/restart-migration-two ]] || fail "update-owned migration did not run"
+[[ $(wc -l <"$HOME/restart-reports" | tr -d ' ') == "1" ]] ||
+  fail "update-owned migration reported restart markers mid-pipeline"
+assertions=$((assertions + 3))
 
 # Migration discovery handles tabs in a valid checkout path without record
 # serialization or field splitting.
@@ -1063,7 +1221,7 @@ rm "$HOME/.local/state/dots/done/unsafe-marker"
 "$ROOT/bin/dots-done" mark test-marker
 "$ROOT/bin/dots-done" check test-marker || fail "done marker not recorded"
 if "$ROOT/bin/dots-done" ensure test-marker 2>/dev/null; then
-  fail "ensure should fail on an existing marker"
+  fail "removed ensure action should be rejected"
 fi
 assertions=$((assertions + 4))
 

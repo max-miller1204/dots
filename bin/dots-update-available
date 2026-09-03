@@ -4,9 +4,9 @@
 # dots:examples=dots update available
 #
 # Exit codes, distinct so scripts can tell the states apart:
-#   0 — updates available (release version or pending commits printed)
-#   1 — up to date
-#   2 — cannot determine (release metadata unavailable, or no Git upstream)
+#   0: updates available (release version or pending commits printed)
+#   1: up to date
+#   2: cannot determine (release metadata unavailable, or no Git upstream)
 # Stable mode compares published versions; developer mode compares Git.
 
 set -o pipefail
@@ -15,7 +15,7 @@ SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=$("$SELF_DIR/dots-path-resolve") || exit 2
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd) || exit 2
 if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
-  exec "$DOTS_PATH/bin/dots-update-available" "$@"
+  exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"
 fi
 source "$DOTS_PATH/install/helpers/files.sh"
 source "$DOTS_PATH/install/helpers/releases.sh"
@@ -34,14 +34,7 @@ if [[ -L $UPDATE_LOCK || ! -f $UPDATE_LOCK ]]; then
   echo "Update lock path changed during open: $UPDATE_LOCK" >&2
   exit 2
 fi
-if [[ $(uname -s) == "Darwin" ]]; then
-  lock_id=$(stat -f '%d:%i' "$UPDATE_LOCK")
-  fd_id=$(perl -e 'open(my $fh, "<&=8") or exit 1; my @s = stat($fh); print "$s[0]:$s[1]"')
-else
-  lock_id=$(stat -Lc '%d:%i' "$UPDATE_LOCK")
-  fd_id=$(stat -Lc '%d:%i' /proc/self/fd/8)
-fi
-if [[ $lock_id != "$fd_id" ]]; then
+if ! dots_file_path_matches_fd "$UPDATE_LOCK" 8; then
   echo "Update lock path changed during open: $UPDATE_LOCK" >&2
   exit 2
 fi

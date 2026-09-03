@@ -9,7 +9,7 @@ set -eo pipefail
 SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
-if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-version-install" "$@"; fi
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"; fi
 source "$DOTS_PATH/install/helpers/files.sh"
 source "$DOTS_PATH/install/helpers/releases.sh"
 
@@ -49,7 +49,7 @@ fi
 checksum_file=$(mktemp "${TMPDIR:-/tmp}/dots-checksums.XXXXXX")
 trap 'rm -f "$checksum_file" "${DOTS_DOWNLOADED_ARCHIVE:-}"' EXIT
 checksum_url="$DOTS_RELEASE_BASE_URL/download/v$requested/SHA256SUMS"
-if ! curl -fsSL --connect-timeout 10 "$checksum_url" -o "$checksum_file"; then
+if ! curl -fsSL --connect-timeout 10 --max-time 60 --retry 2 "$checksum_url" -o "$checksum_file"; then
   echo "Could not download checksums for dots $requested." >&2
   exit 1
 fi

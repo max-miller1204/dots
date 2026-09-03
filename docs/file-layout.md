@@ -22,20 +22,21 @@ Dots does not change the account's configured login shell.
 
 `$DOTS_PATH` identifies the active runtime. Its canonical path is stored as
 plain, non-executable data in `~/.config/dots/path`; the file must be a regular,
-non-symlink file containing exactly one non-empty line, and paths containing a
-newline or colon are rejected. Stable mode stores
+non-symlink file containing exactly one non-empty absolute path, and paths
+containing a newline or colon are rejected. Stable mode stores
 `~/.local/share/dots/current`; developer mode stores the checkout path. Shell
 startup and direct commands resolve the same authority, and commands reached
 through an inactive release or checkout delegate before mutating state.
 
 Three layers populate `$HOME` (omarchy's seed / finalize / resync):
 
-1. **Seed** — `dots install` copies `config/**` → `~/.config/**` and
-   `default/{bashrc,zshrc}` → `~/`, backing up anything it replaces. This
+1. **Seed**: `dots install` copies `config/**` → `~/.config/**` and
+   `default/{bashrc,bash_profile,zshenv,zshrc}` → `~/`, backing up anything it
+   replaces. This
    stands in for `/etc/skel`, which macOS doesn't have.
-2. **Finalize** — `install/config/all.sh` and `install/user/all.sh` handle
+2. **Finalize**: `install/config/all.sh` and `install/user/all.sh` handle
    what a plain copy can't: macOS `defaults`, first-run theme, identity checks.
-3. **Resync** — `dots refresh config <path>` (one file, backup + diff) and
+3. **Resync**: `dots refresh config <path>` (one file, backup + diff) and
    `dots reinstall configs` (everything, clobbers) reset to shipped defaults.
    File replacement rejects final and parent-directory symlinks rather than
    following writes outside the owned HOME or checkout tree.
@@ -47,10 +48,11 @@ Your live files in `~/.config` are yours; the repo holds the defaults.
 ```
 bin/dots-*                 →  on PATH via env-bootstrap (active release or dev checkout)
 config/**                  →  ~/.config/**                  (seed + resync source)
-default/bashrc, bash_profile, zshrc
-                           →  ~/.bashrc, ~/.bash_profile, ~/.zshrc  (seeded, then yours;
-                              bash_profile supports optional Bash login shells)
-default/bash/env-bootstrap →  sourced by both rc files      (DOTS_PATH + PATH)
+default/bashrc, bash_profile, zshrc, zshenv
+                           →  ~/.bashrc, ~/.bash_profile, ~/.zshrc, ~/.zshenv
+                              (seeded, then yours; bash_profile supports optional
+                              Bash login shells; zshenv initializes noninteractive Zsh)
+default/bash/env-bootstrap →  sourced by Bash rc and Zsh startup files (DOTS_PATH + PATH)
 default/bash/{shell,aliases,functions,init}
                            →  sourced by both rc files      (portable shell UX)
 default/bash/inputrc       →  loaded by interactive Bash   (Readline settings)
@@ -65,15 +67,15 @@ themes/<name>/colors.toml  →  staged + rendered by dots-theme-set
 
 ## State vs config
 
-- `~/.local/share/dots/` — owned release store: immutable
+- `~/.local/share/dots/`: owned release store: immutable
   `releases/<version>/` trees, `current`/`previous` pointers, and durable
   pointer-transaction recovery state.
-- `~/.local/state/dots/` — machine state, never versioned: migration markers
+- `~/.local/state/dots/`: machine state, never versioned: migration markers
   (`migrations/`), done markers (`done/`), immutable theme generations
   (`theme-generations/`), atomic active/previous pointers (`current`,
   `theme-previous`), install/update transcripts (`install.log`, `update.log`),
   and `restart-*-required` markers.
-- `~/.config/dots/` — user configuration: the active runtime `path`, optional editable `source-path`, user-only hooks (`hooks/<event>.d/`), user themes (`themes/<name>/`), and user templates
+- `~/.config/dots/`: user configuration: the active runtime `path`, optional editable `source-path`, user-only hooks (`hooks/<event>.d/`), user themes (`themes/<name>/`), and user templates
   (`themed/*.tpl`). First-party theme integrations remain versioned in `bin/`.
 
 ## Theme activation flow
@@ -112,7 +114,7 @@ published.
 | Default file at `~/.config/foo/` | `config/foo/`, then `dots refresh config foo/...` |
 | Adopt a live config into the repo | `dots config import foo/...` |
 | Portable shell alias/function/default | shared file under `default/bash/`, sourced by both rc files |
-| Shell-specific startup behavior | `default/bashrc` or `default/zshrc` |
+| Shell-specific startup behavior | `default/bashrc`, `default/zshenv`, or `default/zshrc` |
 | `dots` shell completion | `default/bash/completions`, `default/zsh/completions`, `default/zsh/site-functions/_dots`, and `bin/dots-completion-candidates` |
 | One-time setup step at install | leaf under `install/config/` or `install/user/`, wired into its `all.sh` |
 | One-time fix for existing installs | `migrations/$(date +%s).sh` |

@@ -32,6 +32,10 @@ cat >"$stub/mise" <<'MISE'
   echo "manifest missing before mise" >&2
   exit 9
 }
+if { true >&9; } 2>/dev/null; then
+  echo "mise inherited the install lock" >&2
+  exit 10
+fi
 printf '%s\n' "$*" >>"$HOME/mise-calls"
 MISE
 chmod +x "$stub/mise"
@@ -69,9 +73,10 @@ BREW
   fallback_home="$SANDBOX/fallback-home"
   fallback_prefix="$fallback_home/homebrew"
   fallback_runtime="$SANDBOX/fallback-runtime"
-  fallback_path="$stub:$fallback_runtime:/usr/bin:/bin"
+  fallback_path="$fallback_runtime:/usr/bin:/bin"
   mkdir -p "$fallback_prefix/bin" "$fallback_prefix/sbin" "$fallback_runtime"
   ln -s "$BASH" "$fallback_runtime/bash"
+  ln -s "$stub/mise" "$fallback_runtime/mise"
   ln -s "$BASH" "$fallback_prefix/bin/bash"
   cat >"$fallback_prefix/bin/brew" <<'BREW'
 #!/usr/bin/env bash
@@ -108,22 +113,43 @@ else
   )
 fi
 [[ -f "$HOME/.config/mise/config.toml" ]] || fail "fresh install did not seed mise manifest"
+[[ -f $HOME/.zshenv ]] || fail "fresh install did not seed non-interactive Zsh environment"
 grep -q '^install$' "$HOME/mise-calls" || fail "fresh install did not run mise after seeding"
 [[ $(cat "$HOME/.config/dots/path") == "$canonical_repo" ]] || fail "checkout path was not stored as plain data"
 [[ ! -e "$HOME/.config/dots/dots.conf" && ! -L "$HOME/.config/dots/dots.conf" ]] || fail "install wrote executable dots.conf"
 [[ -f "$HOME/.local/state/dots/done/install" ]] || fail "successful install was not marked complete"
 [[ -f "$HOME/.config/$newline_config" ]] || fail "fresh install split a newline-bearing config filename"
 [[ -f "$HOME/.config/$newline_parent/file" ]] || fail "fresh install split a newline-bearing config directory"
-assertions=$((assertions + 7))
+assertions=$((assertions + 8))
 
 # Re-running install applies migrations that arrived after the first install.
 cat >"$repo/migrations/2999999999.sh" <<'MIGRATION'
 printf 'ran\n' >"$HOME/install-rerun-migration"
 MIGRATION
+printf '%s\n' "$SANDBOX/removed-old-runtime" >"$HOME/.config/dots/path"
 PATH="$stub:$runtime_path" "$repo/bin/dots-install" --developer >/dev/null
 [[ -f $HOME/install-rerun-migration ]] || fail "install rerun left a pending migration unapplied"
 [[ -f $HOME/.local/state/dots/migrations/2999999999.sh ]] || fail "install rerun did not mark its migration"
 assertions=$((assertions + 2))
+
+# Existing installs run migrations before shell seeding, while the migration
+# can still recognize and repair the exact previously shipped rc files.
+ordering_home="$SANDBOX/ordering-home"
+ordering_state="$ordering_home/.local/state/dots"
+mkdir -p "$ordering_state/done" "$ordering_state/migrations"
+: >"$ordering_state/done/install"
+cp "$ROOT/test/fixtures/1788046742/bashrc.old" "$ordering_home/.bashrc"
+cp "$ROOT/test/fixtures/1788046742/zshrc.old" "$ordering_home/.zshrc"
+for migration in "$repo"/migrations/*.sh; do
+  [[ ${migration##*/} == "1788046742.sh" ]] && continue
+  : >"$ordering_state/migrations/${migration##*/}"
+done
+ordering_out=$(HOME="$ordering_home" GIT_CONFIG_GLOBAL="$ordering_home/.gitconfig" \
+  PATH="$stub:$runtime_path" "$repo/bin/dots-install" --developer)
+assert_contains "$ordering_out" "Updated stock ~/.bashrc" "install migrated stock bashrc before seeding"
+assert_contains "$ordering_out" "Updated stock ~/.zshrc" "install migrated stock zshrc before seeding"
+[[ -f $ordering_state/migrations/1788046742.sh ]] || fail "ordered install did not mark adoption migration"
+assertions=$((assertions + 3))
 
 # A package convergence failure aborts and never creates the install marker.
 failed_home="$SANDBOX/failed-home"
@@ -180,7 +206,8 @@ if HOME="$linked_done_home" PATH="$stub:$runtime_path" "$repo/bin/dots-install" 
   fail "install accepted a symlinked completion marker"
 fi
 [[ ! -e "$SANDBOX/dangling-install-done" ]] || fail "install created completion marker target"
-[[ ! -e "$linked_done_home/.config/dots/path" ]] || fail "install mutated config before rejecting completion marker"
+[[ $(<"$linked_done_home/.config/dots/path") == "$canonical_repo" ]] ||
+  fail "unsafe completion marker prevented runtime path repair"
 assertions=$((assertions + 3))
 
 # A checkout path that cannot be represented safely is rejected before setup.

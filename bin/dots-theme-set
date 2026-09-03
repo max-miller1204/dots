@@ -10,9 +10,10 @@ SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
 if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
-  exec "$DOTS_PATH/bin/dots-theme-set" "$@"
+  exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"
 fi
 source "$DOTS_PATH/install/helpers/files.sh"
+source "$DOTS_PATH/install/helpers/theme-generation.sh"
 
 if (( $# != 1 )); then
   echo "Usage: dots-theme-set <theme-name>" >&2
@@ -33,8 +34,6 @@ PREVIOUS_PATH="$STATE_ROOT/theme-previous"
 RECOVERY_POINTER="$STATE_ROOT/.theme-current-recovery"
 USER_THEMES_PATH="$HOME/.config/dots/themes"
 DOTS_THEMES_PATH="$DOTS_PATH/themes"
-GENERATION_MARKER_NAME=".dots-theme-generation"
-GENERATION_MARKER_VALUE="dots-theme-generation-v1"
 
 theme_dir="$DOTS_THEMES_PATH/$THEME_NAME"
 user_theme_dir="$USER_THEMES_PATH/$THEME_NAME"
@@ -62,7 +61,6 @@ if [[ -L $GENERATIONS_DIR || ! -d $GENERATIONS_DIR ]]; then
   echo "Theme generations path changed during creation: $GENERATIONS_DIR" >&2
   exit 1
 fi
-dots_file_assert_safe_parents "$THEME_LOCK" "$HOME"
 "$DOTS_PATH/bin/dots-ensure-flock"
 if [[ -L $THEME_LOCK || ( -e $THEME_LOCK && ! -f $THEME_LOCK ) ]]; then
   echo "Refusing unsafe theme lock path: $THEME_LOCK" >&2
@@ -73,14 +71,7 @@ if [[ -L $THEME_LOCK || ! -f $THEME_LOCK ]]; then
   echo "Theme lock path changed during open: $THEME_LOCK" >&2
   exit 1
 fi
-if [[ $(uname -s) == "Darwin" ]]; then
-  lock_id=$(stat -f '%i' "$THEME_LOCK")
-  fd_id=$(stat -f '%i' /dev/fd/9)
-else
-  lock_id=$(stat -Lc '%d:%i' "$THEME_LOCK")
-  fd_id=$(stat -Lc '%d:%i' /proc/self/fd/9)
-fi
-if [[ $lock_id != "$fd_id" ]]; then
+if ! dots_file_path_matches_fd "$THEME_LOCK" 9; then
   echo "Theme lock path changed during open: $THEME_LOCK" >&2
   exit 1
 fi
@@ -128,27 +119,8 @@ replace_pointer() { # replace_pointer <relative-target> <pointer-path>
   pointer_tmp_dir=""
 }
 
-file_has_exact_line() { # file_has_exact_line <file> <expected>
-  local file=$1 expected=$2
-  local -a lines=()
-  [[ ! -L $file && -f $file ]] || return 1
-  mapfile -t lines <"$file"
-  ((${#lines[@]} == 1)) && [[ ${lines[0]} == "$expected" ]]
-}
-
 valid_generation_target() { # valid_generation_target <relative-target>
-  local target=$1 generation theme_name=""
-  local -a theme_name_lines=()
-  [[ $target =~ ^theme-generations/(generation|recovery)\.[A-Za-z0-9]+$ ]] || return 1
-  generation="$STATE_ROOT/$target"
-  [[ ! -L $generation && -d $generation ]] || return 1
-  [[ ! -L $generation/theme && -d $generation/theme ]] || return 1
-  [[ ! -L $generation/theme.name && -f $generation/theme.name ]] || return 1
-  mapfile -t theme_name_lines <"$generation/theme.name"
-  ((${#theme_name_lines[@]} == 1)) || return 1
-  theme_name=${theme_name_lines[0]}
-  [[ $theme_name =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || return 1
-  file_has_exact_line "$generation/$GENERATION_MARKER_NAME" "$GENERATION_MARKER_VALUE"
+  dots_theme_generation_target_valid "$STATE_ROOT" "$1"
 }
 
 theme_test_crash() { # private deterministic SIGKILL boundary for lifecycle tests
@@ -197,7 +169,6 @@ startup_current_target=""
 startup_previous_target=""
 startup_legacy=""
 recovery_target=""
-stale_pre_move_recovery=""
 if [[ -L $CURRENT_PATH ]]; then
   startup_current_target=$(readlink "$CURRENT_PATH")
   valid_generation_target "$startup_current_target" || {
@@ -222,7 +193,6 @@ elif [[ -L $RECOVERY_POINTER ]]; then
   if ! valid_generation_target "$recovery_target"; then
     if [[ -n $startup_legacy && $recovery_target =~ ^theme-generations/recovery\.[A-Za-z0-9]+$ &&
           ! -e $STATE_ROOT/$recovery_target && ! -L $STATE_ROOT/$recovery_target ]]; then
-      stale_pre_move_recovery=1
       recovery_target=""
     else
       echo "Refusing invalid recovery pointer: $RECOVERY_POINTER" >&2
@@ -305,7 +275,8 @@ reject_theme_symlinks "$staging_path/theme" "staged theme $THEME_NAME"
 "$DOTS_PATH/bin/dots-theme-set-templates" "$staging_path/theme"
 reject_theme_symlinks "$staging_path/theme" "staged theme $THEME_NAME"
 printf '%s\n' "$THEME_NAME" >"$staging_path/theme.name"
-printf '%s\n' "$GENERATION_MARKER_VALUE" >"$staging_path/$GENERATION_MARKER_NAME"
+printf '%s\n' "$DOTS_THEME_GENERATION_MARKER_VALUE" >\
+  "$staging_path/$DOTS_THEME_GENERATION_MARKER_NAME"
 theme_test_crash after-staging-build
 
 generation_token=${staging_path##*/.staging.}
@@ -342,15 +313,15 @@ elif [[ -d $CURRENT_PATH ]]; then
     echo "Refusing malformed legacy current theme: $CURRENT_PATH" >&2
     exit 1
   }
-  legacy_marker="$CURRENT_PATH/$GENERATION_MARKER_NAME"
+  legacy_marker="$CURRENT_PATH/$DOTS_THEME_GENERATION_MARKER_NAME"
   if [[ -e $legacy_marker || -L $legacy_marker ]]; then
-    file_has_exact_line "$legacy_marker" "$GENERATION_MARKER_VALUE" || {
+    dots_theme_file_has_exact_line "$legacy_marker" "$DOTS_THEME_GENERATION_MARKER_VALUE" || {
       echo "Refusing foreign legacy generation marker: $legacy_marker" >&2
       exit 1
     }
   else
     generation_marker_source=$(mktemp "${TMPDIR:-/tmp}/dots-theme-generation-marker.XXXXXX")
-    printf '%s\n' "$GENERATION_MARKER_VALUE" >"$generation_marker_source"
+    printf '%s\n' "$DOTS_THEME_GENERATION_MARKER_VALUE" >"$generation_marker_source"
     dots_file_replace "$generation_marker_source" "$legacy_marker" discard
     rm -f "$generation_marker_source"
     generation_marker_source=""
@@ -426,7 +397,7 @@ flock -u 9
 exec 9>&-
 
 echo "Theme set to $THEME_NAME."
-echo "Generated files live in $CURRENT_PATH/theme — point your apps' configs there."
+echo "Generated files live in $CURRENT_PATH/theme: point your apps' configs there."
 if ((sync_rc != 0 || hook_rc != 0)); then
   echo "Theme applied, but one or more integrations or user hooks failed." >&2
   exit 1

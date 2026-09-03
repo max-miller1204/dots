@@ -6,8 +6,8 @@ This repo replicates omarchy's dotfiles architecture on macOS. Read
 # Style
 
 - Two spaces for indentation, no tabs
-- Shebangs must use `#!/usr/bin/env bash` consistently (never `#!/bin/bash` —
-  a deliberate deviation from omarchy: macOS pins `/bin/bash` at 3.2, so the
+- Shebangs must use `#!/usr/bin/env bash` consistently (never `#!/bin/bash`;
+  this deliberately deviates from omarchy: macOS pins `/bin/bash` at 3.2, so the
   command runtime lives at Homebrew's prefix and is found via PATH, which
   `default/bash/env-bootstrap` guarantees)
 - **Bash >= 4 is assumed; write bash 5 idioms** as omarchy does: `declare -A`,
@@ -15,12 +15,12 @@ This repo replicates omarchy's dotfiles architecture on macOS. Read
   version and points at the fix. On macOS, `bin/dots-install` bootstraps
   Homebrew Bash for scripts without changing the account's login shell.
 - Scripts under `install/` are sourced and intentionally omit shebangs
-- **Scripts must run on macOS (BSD userland) and Ubuntu/WSL (GNU userland)** —
+- **Scripts must run on macOS (BSD userland) and Ubuntu/WSL (GNU userland)**:
   bash is uniform now, but the userland is not: avoid flags that differ
   (`sed -i` without a suffix, `date -r`, `ls --color` outside a `uname`
   guard). mise is the only layer for dev tools; Homebrew exists on macOS
   solely for system-level pieces (Bash, flock), and only inside
-  `bin/dots-install` and `install/config/flock.sh` — never in shared code.
+  `bin/dots-install` and `install/config/flock.sh`: never in shared code.
 - Use `[[ ]]` for string/file tests and `(( ))` for numeric tests
 - In `[[ ]]`, don't quote variables, but do quote string literals when comparing
 - For strings/paths with spaces, quote them instead of escaping spaces
@@ -48,10 +48,10 @@ Multiple examples are separated by `;;` (no spaces required). The help renderer 
 
 Use these instead of raw shell commands:
 
-- `dots-cmd-missing` / `dots-cmd-present` — check for commands
-- `dots-pkg-add` / `dots-pkg-drop` — global tools via `mise use/unuse --global`
-- `dots-done <check|mark|ensure> <name>` — one-time-step markers
-- `dots-refresh-config <path>` — copy a shipped config to `~/.config` with backup
+- `dots-cmd-missing` / `dots-cmd-present` - check for commands
+- `dots-pkg-add` / `dots-pkg-drop` - global tools via `mise use/unuse --global`
+- `dots-done <check|mark> <name>` - one-time-step markers
+- `dots-refresh-config <path>` - copy a shipped config to `~/.config` with backup
 
 # Migrations
 
@@ -67,18 +67,18 @@ pipeline reports and clears these markers at the end
 
 # Config structure
 
-- `config/` — default configs copied to `~/.config/` (never symlinked)
-- `default/themed/*.tpl` — templates with `{{ key }}` placeholders for theme
+- `config/` - default configs copied to `~/.config/` (never symlinked)
+- `default/themed/*.tpl` - templates with `{{ key }}` placeholders for theme
   colors (`{{ key }}`, `{{ key_strip }}`, `{{ key_rgb }}`; no mix/gradient
   helpers, unlike omarchy)
-- `themes/*/colors.toml` — theme palettes (accent, selection, muted,
+- `themes/*/colors.toml` - theme palettes (accent, selection, muted,
   background/foreground ramps, named colors and bright_* variants)
 
 # Tests
 
 Run `./test/all` after changes to `bin/`, the theme system, or the update
 pipeline. Suites are standalone executables under `test/` (`test/cli`,
-`test/install`, `test/update`) sourcing `test/helpers.sh` for shared assertions and sandbox
-setup; wire new suites into `test/all`. Tests run in a sandbox `$HOME` and
-must not touch the real one — stub external commands (mise, network git)
-rather than calling them.
+`test/completion`, `test/install`, `test/release`, and `test/update`) sourcing
+`test/helpers.sh` for shared assertions and sandbox setup; wire new suites into
+`test/all`. Tests run in a sandbox `$HOME` and must not touch the real one -
+stub external commands (mise, network git) rather than calling them.

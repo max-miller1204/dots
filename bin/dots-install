@@ -79,6 +79,16 @@ if (($#)); then
   echo "Usage: dots install [--developer]" >&2
   exit 1
 fi
+
+# Any reinstall is also the repair path when the previously recorded runtime
+# has been deleted. Repair that one broken authority before delegating to the
+# lock wrapper, which otherwise cannot resolve a runnable lock command. Invalid
+# or unsafe path files still fail closed instead of being overwritten.
+configured_runtime=$(dots_release_configured_path 2>/dev/null) || configured_runtime=""
+if [[ -n $configured_runtime && ! -d $configured_runtime ]]; then
+  dots_release_write_path "$DOTS_PATH"
+fi
+
 if ! dots_release_lock_fd_valid; then
   exec "$DOTS_PATH/bin/dots-update-lock" "$0" "${original_args[@]}"
 fi
@@ -120,19 +130,11 @@ source "$DOTS_PATH/install/helpers/logging.sh"
 
 echo "Installing dots from $DOTS_PATH"
 
-install_done=0
-done_rc=0
-dots-done check install && install_done=1 || done_rc=$?
-if ((done_rc > 1)); then
-  echo "Cannot determine install completion safely." >&2
-  exit "$done_rc"
-fi
-
-# Store the checkout as plain data, never sourced shell code. A newline cannot
+# Store the active runtime as plain data, never sourced shell code. A newline cannot
 # be represented by the one-line format, and a colon cannot be represented as
 # one PATH entry, so reject both with an actionable error.
-if [[ $DOTS_PATH == *$'\n'* || $DOTS_PATH == *:* ]]; then
-  echo "The dots checkout path cannot contain a newline or colon: $DOTS_PATH" >&2
+if [[ $DOTS_PATH != /* || $DOTS_PATH == *$'\n'* || $DOTS_PATH == *:* ]]; then
+  echo "The dots runtime path cannot contain a newline or colon: $DOTS_PATH" >&2
   exit 1
 fi
 dots_path_source=$(mktemp "${TMPDIR:-/tmp}/dots-path.XXXXXX")
@@ -145,7 +147,18 @@ rm -f "$dots_path_source"
 if [[ -n $DOTS_FILE_BACKUP ]]; then
   echo "Updated ~/.config/dots/path (backup at $DOTS_FILE_BACKUP)"
 else
-  echo "Recorded checkout location in ~/.config/dots/path"
+  echo "Recorded runtime location in ~/.config/dots/path"
+fi
+
+# Publish the repaired runtime path before consulting legacy completion state:
+# an unsafe completion marker must still fail closed, but must not prevent this
+# checkout-authority repair.
+install_done=0
+done_rc=0
+dots-done check install && install_done=1 || done_rc=$?
+if ((done_rc > 1)); then
+  echo "Cannot determine install completion safely." >&2
+  exit "$done_rc"
 fi
 
 # Older installs stored executable shell text here. It is no longer sourced;
@@ -166,14 +179,21 @@ dots-refresh-config mise/config.toml
 # 2. Packages. A missing mise or failed install aborts the entire install.
 source "$DOTS_PATH/install/packages.sh"
 
+# Existing installs must repair their prior stock files before the seeding pass
+# replaces them. Clear the update-lock sentinel along with fd 9 so this
+# standalone install reports any restart markers produced by migrations.
+if ((install_done == 1)); then
+  DOTS_UPDATE_LOCK_PID="" "$DOTS_PATH/bin/dots-migrate" 9>&-
+fi
+
 # 3. Seed configs: config/** -> ~/.config/**, backing up anything replaced
 echo "Seeding configs into ~/.config..."
-(
-  cd "$DOTS_PATH/config"
-  find . -type f ! -name '.DS_Store' -print0 | while IFS= read -r -d '' file; do
-    dots-refresh-config "${file#./}"
-  done
-)
+seed_config_file() {
+  local file=$1
+
+  dots-refresh-config "${file#./}"
+}
+dots_config_for_each_file "$DOTS_PATH/config" seed_config_file
 
 # 4. Shell integration: seed rc files, backing up differing versions
 seed_home_file() { # seed_home_file <repo-file> <home-file>
@@ -187,13 +207,14 @@ seed_home_file() { # seed_home_file <repo-file> <home-file>
 
 seed_home_file default/bashrc .bashrc
 seed_home_file default/bash_profile .bash_profile
+seed_home_file default/zshenv .zshenv
 seed_home_file default/zshrc .zshrc
 
 # 5. System-side and user-side setup
 source "$DOTS_PATH/install/config/all.sh"
 source "$DOTS_PATH/install/user/all.sh"
 
-# 6. On first install, mark all shipped migrations as applied — a fresh
+# 6. On first install, mark all shipped migrations as applied: a fresh
 # install already reflects them (omarchy does the same for new users).
 if ((install_done == 0)); then
   empty_marker=$(mktemp "${TMPDIR:-/tmp}/dots-install-migration-marker.XXXXXX")
@@ -208,9 +229,9 @@ if ((install_done == 0)); then
   trap - EXIT
 fi
 
-# Existing installations may have acquired new migrations since their first
-# setup. Fresh installs just marked every shipped migration, so this is a no-op.
-"$DOTS_PATH/bin/dots-migrate" 9>&-
+# Existing installations ran migrations before config seeding so stock-file
+# repairs could still recognize their inputs. Fresh installs just marked every
+# shipped migration, so they have nothing to run.
 "$DOTS_PATH/bin/dots-hook" post-install 9>&-
 dots-done mark install
 exec 9>&-

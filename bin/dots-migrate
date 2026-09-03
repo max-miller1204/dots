@@ -15,7 +15,7 @@ SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
 if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then
-  exec "$DOTS_PATH/bin/dots-migrate" "$@"
+  exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"
 fi
 source "$DOTS_PATH/install/helpers/files.sh"
 
@@ -46,9 +46,9 @@ pending_migrations() {
     [[ -f $file ]] || continue
     name=${file##*/}
     marker="$STATE_DIR/$name"
-    if [[ -L $marker || ( -e $marker && ! -f $marker ) ]]; then
-      echo "Refusing unsafe migration marker: $marker" >&2
-      return 1
+    if [[ -L $marker || ( -e $marker && ( ! -f $marker || -s $marker ) ) ]]; then
+      echo "Refusing unsafe or corrupt migration marker: $marker" >&2
+      return 2
     fi
     [[ -f $marker ]] || printf '%s\n' "$name"
   done
@@ -68,22 +68,20 @@ if [[ -L $MIGRATION_LOCK || ! -f $MIGRATION_LOCK ]]; then
   echo "Migration lock path changed during open: $MIGRATION_LOCK" >&2
   exit 1
 fi
-if [[ $(uname -s) == "Darwin" ]]; then
-  lock_id=$(stat -f '%i' "$MIGRATION_LOCK")
-  fd_id=$(stat -f '%i' /dev/fd/8)
-else
-  lock_id=$(stat -Lc '%d:%i' "$MIGRATION_LOCK")
-  fd_id=$(stat -Lc '%d:%i' /proc/self/fd/8)
-fi
-if [[ $lock_id != "$fd_id" ]]; then
+if ! dots_file_path_matches_fd "$MIGRATION_LOCK" 8; then
   echo "Migration lock path changed during open: $MIGRATION_LOCK" >&2
   exit 1
 fi
-flock 8
-
 if [[ $mode == "pending" ]]; then
-  pending_output=$(pending_migrations)
-  if [[ -n $pending_output ]]; then
+  if ! flock -n 8; then
+    echo "Cannot determine pending migrations while another migration is running." >&2
+    exit 2
+  fi
+  pending_rc=0
+  pending_output=$(pending_migrations) || pending_rc=$?
+  if ((pending_rc != 0)); then
+    exit "$pending_rc"
+  elif [[ -n $pending_output ]]; then
     printf '%s\n' "$pending_output"
     exit 0
   else
@@ -91,28 +89,42 @@ if [[ $mode == "pending" ]]; then
   fi
 fi
 
+flock 8
+
 [[ -d $MIGRATIONS_DIR ]] || exit 0
 
 empty_marker=$(mktemp "${TMPDIR:-/tmp}/dots-migration-marker.XXXXXX")
 trap 'rm -f "$empty_marker"' EXIT
+migration_rc=0
 for file in "$MIGRATIONS_DIR"/*.sh; do
   [[ -f $file ]] || continue
   name=${file##*/}
   marker="$STATE_DIR/$name"
-  if [[ -L $marker || ( -e $marker && ! -f $marker ) ]]; then
-    echo "Refusing unsafe migration marker: $marker" >&2
-    exit 1
+  if [[ -L $marker || ( -e $marker && ( ! -f $marker || -s $marker ) ) ]]; then
+    echo "Refusing unsafe or corrupt migration marker: $marker" >&2
+    exit 2
   fi
   if [[ ! -f $marker ]]; then
     echo -e "\033[32m\nRunning migration (${name%.sh})\033[0m"
-    DOTS_PATH="$DOTS_PATH" bash -euo pipefail "$file" 8>&-
-    dots_file_replace "$empty_marker" "$marker" discard
+    file_rc=0
+    DOTS_PATH="$DOTS_PATH" bash -euo pipefail "$file" 8>&- || file_rc=$?
+    if ((file_rc == 0)); then
+      dots_file_replace "$empty_marker" "$marker" discard
+    else
+      echo "Migration failed (${name%.sh}, exit $file_rc); continuing." >&2
+      if ((migration_rc == 0)); then
+        migration_rc=$file_rc
+      fi
+    fi
   fi
 done
 
 # Migrations may leave restart-*-required markers; report them here too so a
 # standalone `dots migrate` surfaces them instead of leaving them for the
 # next `dots update`.
-"$SELF_DIR/dots-update-restart" 8>&-
+if [[ -z ${DOTS_UPDATE_LOCK_PID:-} ]]; then
+  "$SELF_DIR/dots-update-restart" 8>&-
+fi
 flock -u 8
 exec 8>&-
+exit "$migration_rc"

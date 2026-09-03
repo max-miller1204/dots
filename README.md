@@ -1,6 +1,6 @@
 # dots
 
-Personal dotfiles for macOS, Ubuntu, and WSL. Configs are copied—not symlinked—and immutable GitHub Release bundles provide the command runtime. [mise](https://mise.jdx.dev) installs the same tools on every platform.
+Personal dotfiles for macOS, Ubuntu, and WSL. Configs are copied, not symlinked, and immutable GitHub Release bundles provide the command runtime. [mise](https://mise.jdx.dev) installs the same tools on every platform.
 
 ## Setup
 
@@ -38,13 +38,13 @@ dots theme set tokyo-night   # select a theme
 
 ## Documentation
 
-- Setup, mise ownership, and troubleshooting — [`docs/setup.md`](docs/setup.md)
-- Commands — [`docs/commands.md`](docs/commands.md)
-- Tool and package management — [`docs/packages.md`](docs/packages.md)
-- Configuration and repository layout — [`docs/file-layout.md`](docs/file-layout.md)
-- Themes — [`docs/themes.md`](docs/themes.md)
-- Migrations and hooks — [`docs/extending.md`](docs/extending.md)
-- Update pipeline — [`docs/update-process.md`](docs/update-process.md)
-- Versioning and publishing releases — [`docs/releases.md`](docs/releases.md)
+- Setup, mise ownership, and troubleshooting: [`docs/setup.md`](docs/setup.md)
+- Commands: [`docs/commands.md`](docs/commands.md)
+- Tool and package management: [`docs/packages.md`](docs/packages.md)
+- Configuration and repository layout: [`docs/file-layout.md`](docs/file-layout.md)
+- Themes: [`docs/themes.md`](docs/themes.md)
+- Migrations and hooks: [`docs/extending.md`](docs/extending.md)
+- Update pipeline: [`docs/update-process.md`](docs/update-process.md)
+- Versioning and publishing releases: [`docs/releases.md`](docs/releases.md)
 
 Run the test suite with `./test/all`.

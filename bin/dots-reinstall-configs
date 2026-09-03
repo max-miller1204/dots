@@ -8,7 +8,7 @@ set -eo pipefail
 SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
-if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-reinstall-configs" "$@"; fi
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"; fi
 source "$DOTS_PATH/install/helpers/files.sh"
 
 # Omarchy's equivalent replays /etc/skel over $HOME without backup. Same
@@ -16,23 +16,24 @@ source "$DOTS_PATH/install/helpers/files.sh"
 # fall back on.
 if [[ ${1:-} != "--force" ]]; then
   echo "This overwrites your ~/.config copies of every file in $DOTS_PATH/config,"
-  echo "plus ~/.bashrc, ~/.bash_profile, and ~/.zshrc, with the shipped defaults."
+  echo "plus ~/.bashrc, ~/.bash_profile, ~/.zshenv, and ~/.zshrc, with the shipped defaults."
   echo "No backups are kept."
   printf 'Continue? [y/N] '
   read -r reply
   [[ $reply == "y" || $reply == "Y" ]] || { echo "Aborted."; exit 1; }
 fi
 
-(
-  cd "$DOTS_PATH/config"
-  find . -type f ! -name '.DS_Store' -print0 | while IFS= read -r -d '' file; do
-    file=${file#./}
-    dots_file_replace "$file" "$HOME/.config/$file" discard
-  done
-)
+reinstall_config_file() {
+  local file=$1
+
+  file=${file#./}
+  dots_file_replace "$DOTS_PATH/config/$file" "$HOME/.config/$file" discard
+}
+dots_config_for_each_file "$DOTS_PATH/config" reinstall_config_file
 
 dots_file_replace "$DOTS_PATH/default/bashrc" "$HOME/.bashrc" discard
 dots_file_replace "$DOTS_PATH/default/bash_profile" "$HOME/.bash_profile" discard
+dots_file_replace "$DOTS_PATH/default/zshenv" "$HOME/.zshenv" discard
 dots_file_replace "$DOTS_PATH/default/zshrc" "$HOME/.zshrc" discard
 
 echo "Configs reset to shipped defaults."

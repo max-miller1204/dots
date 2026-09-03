@@ -8,7 +8,7 @@ updates go wrong.
 dots-update
   ├─ dots-update-lock                  serialize concurrent runs
   │    (flock(1) on an fd the pipeline inherits: the kernel releases the
-  │     lock when the last holder exits, SIGKILL included — util-linux on
+  │     lock when the last holder exits, SIGKILL included: util-linux on
   │     Ubuntu/WSL, discoteq flock via brew on macOS)
   ├─ transcript: script(1) records the run off a real pty into
   │    ~/.local/state/dots/update.log (BSD and util-linux flag syntax
@@ -31,7 +31,9 @@ dots-update
 The command exits `0` only after every convergence stage succeeds. A stable release download or verification failure stops before tools and
 migrations run. Git, mise, or post-update hook failures are reported as
 `Update incomplete.` with exit status `2`; migration failures retain their own
-nonzero status. A locally modified developer checkout remains untouched and is
+nonzero status. Migration processing continues past individual failures, then
+skips the post-update hook while still running log analysis and restart
+reporting. A locally modified developer checkout remains untouched and is
 reported as incomplete. Stable updates never inspect or mutate the editable
 source checkout.
 
@@ -68,9 +70,9 @@ finish.
 and the configured Git upstream in developer mode. Exit codes are distinct so
 scripts can tell the states apart:
 
-- `0` — updates available (published version or pending commits printed)
-- `1` — up to date
-- `2` — cannot determine (release metadata unavailable, no developer upstream, or an update owns the lock)
+- `0`: updates available (published version or pending commits printed)
+- `1`: up to date
+- `2`: cannot determine (release metadata unavailable, no developer upstream, or an update owns the lock)
 
 The availability check shares the update lock so its release check or Git fetch
 cannot race a full update. Developer mode falls back to existing

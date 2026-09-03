@@ -8,40 +8,18 @@ set -euo pipefail
 SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
-if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-theme-sync-tmux" "$@"; fi
-colors_path="$HOME/.local/state/dots/current/theme/colors.toml"
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"; fi
+tmux_path="$HOME/.local/state/dots/current/theme/tmux.conf"
 
 "$DOTS_PATH/bin/dots-cmd-present" tmux || exit 0
-[[ -L $colors_path ]] && { echo "Refusing symlinked tmux theme source: $colors_path" >&2; exit 1; }
-[[ -f $colors_path ]] || exit 0
-"$SELF_DIR/dots-theme-source-valid" colors.toml || {
-  echo "Refusing unowned tmux theme source: $colors_path" >&2
+[[ -f $tmux_path ]] || exit 0
+"$SELF_DIR/dots-theme-source-valid" tmux.conf || {
+  echo "Refusing unowned tmux theme source: $tmux_path" >&2
   exit 1
 }
 tmux list-sessions >/dev/null 2>&1 || exit 0
 
-declare -A colors=()
-key_re='^[[:space:]]*([A-Za-z0-9_]+)[[:space:]]*=[[:space:]]*"([^"]*)"'
-while IFS= read -r line; do
-  [[ $line =~ $key_re ]] || continue
-  colors[${BASH_REMATCH[1]}]=${BASH_REMATCH[2]}
-done <"$colors_path"
-
-foreground=${colors[foreground]:-}
-background=${colors[background]:-}
-muted=${colors[muted]:-}
-accent=${colors[accent]:-}
-selection=${colors[selection]:-}
-selection_background=${colors[selection_background]:-$selection}
-selection_foreground=${colors[selection_foreground]:-}
-[[ -n $selection_foreground ]] || selection_foreground=${colors[bright_foreground]:-$foreground}
-
-[[ -n $foreground && -n $background ]] || exit 0
-
-tmux set-option -g window-style "fg=$foreground,bg=$background" 2>/dev/null || true
-tmux set-option -g window-active-style "fg=$foreground,bg=$background" 2>/dev/null || true
-[[ -z $muted ]] || tmux set-option -g pane-border-style "fg=$muted" 2>/dev/null || true
-[[ -z $accent ]] || tmux set-option -g pane-active-border-style "fg=$accent" 2>/dev/null || true
-tmux set-option -g status-style "fg=$foreground,bg=$background" 2>/dev/null || true
-[[ -z $selection_background ]] || tmux set-option -g mode-style "fg=$selection_foreground,bg=$selection_background" 2>/dev/null || true
+# Source the same generated config used by new servers. This preserves the
+# renderer's user-template precedence instead of duplicating palette logic.
+tmux source-file "$tmux_path" 2>/dev/null || true
 tmux refresh-client -S 2>/dev/null || tmux refresh-client 2>/dev/null || true

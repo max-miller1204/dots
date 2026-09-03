@@ -6,10 +6,10 @@
 SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=$("$SELF_DIR/dots-path-resolve") || exit 1
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd) || exit 1
-if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-theme-list" "$@"; fi
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"; fi
 
 current=""
-[[ -f "$HOME/.local/state/dots/current/theme.name" ]] &&
+[[ -f $HOME/.local/state/dots/current/theme.name ]] &&
   current=$(<"$HOME/.local/state/dots/current/theme.name")
 
 {
@@ -18,7 +18,7 @@ current=""
     basename "$dir"
   done
 } | sort -u | while IFS= read -r name; do
-  if [[ $name == "$current" ]]; then
+  if [[ $name == $current ]]; then
     echo "$name (current)"
   else
     echo "$name"

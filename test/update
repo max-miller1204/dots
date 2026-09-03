@@ -40,6 +40,48 @@ assert_contains "$out" "dots install" "missing macOS flock has actionable guidan
 [[ ! -e "$flock_stub/brew-called" ]] || fail "flock diagnostic invoked Homebrew"
 assertions=$((assertions + 1))
 
+# The update lock performs the one unlocked bootstrap needed to make the
+# historical flock-healing migration reachable on existing macOS installs.
+flock_repair_repo="$SANDBOX/flock-repair-repo"
+flock_repair_bin="$SANDBOX/flock-repair-bin"
+flock_repair_home="$SANDBOX/flock-repair-home"
+mkdir -p "$flock_repair_repo/bin" "$flock_repair_repo/install/config" \
+  "$flock_repair_repo/install/helpers" "$flock_repair_bin" "$flock_repair_home"
+cp "$ROOT/bin/dots-update-lock" "$flock_repair_repo/bin/dots-update-lock"
+cp "$ROOT/install/config/flock.sh" "$flock_repair_repo/install/config/flock.sh"
+cp "$ROOT/install/helpers/files.sh" "$flock_repair_repo/install/helpers/files.sh"
+ln -s "$(command -v bash)" "$flock_repair_bin/bash"
+ln -s "$(command -v dirname)" "$flock_repair_bin/dirname"
+ln -s "$(command -v ln)" "$flock_repair_bin/ln"
+cat >"$flock_repair_repo/bin/dots-path-resolve" <<EOF
+#!/usr/bin/env bash
+printf '%s\\n' '$flock_repair_repo'
+EOF
+cat >"$flock_repair_repo/bin/dots-ensure-flock" <<'EOF'
+#!/usr/bin/env bash
+command -v flock >/dev/null 2>&1 || exit 90
+printf 'repaired\n' >"$HOME/flock-repaired"
+exit 73
+EOF
+cat >"$flock_repair_bin/uname" <<'EOF'
+#!/usr/bin/env bash
+printf 'Darwin\n'
+EOF
+true_path=$(type -P true)
+cat >"$flock_repair_bin/brew" <<EOF
+#!/usr/bin/env bash
+printf 'called\\n' >"\$HOME/brew-called"
+ln -s "$true_path" "\${0%/*}/flock"
+EOF
+chmod +x "$flock_repair_repo/bin/"* "$flock_repair_bin/uname" "$flock_repair_bin/brew"
+rc=0
+HOME="$flock_repair_home" PATH="$flock_repair_bin" \
+  "$flock_repair_repo/bin/dots-update-lock" /bin/true >/dev/null 2>&1 || rc=$?
+((rc == 73)) || fail "update lock did not reach flock bootstrap (got $rc)"
+[[ -f $flock_repair_home/brew-called ]] || fail "update lock did not invoke the flock bootstrap"
+[[ -f $flock_repair_home/flock-repaired ]] || fail "update lock did not continue after installing flock"
+assertions=$((assertions + 3))
+
 # --- adoption migration: missing defaults are installed, user shell files are
 # preserved, Git defaults are merged, and mise receives the shipped tool set.
 printf '# custom shell\n' >"$HOME/.bashrc"
@@ -77,22 +119,46 @@ retry_home="$SANDBOX/retry-home"
 retry_state="$retry_home/.local/state/dots/migrations"
 mkdir -p "$retry_repo/migrations" "$retry_repo/bin" "$retry_repo/install/helpers" \
   "$retry_home" "$SANDBOX/failing-stub"
+cp -R "$ROOT/config" "$ROOT/default" "$retry_repo/"
 cp "$ROOT/migrations/1788046742.sh" "$retry_repo/migrations/1788046742.sh"
 cp "$ROOT/bin/dots-migrate" "$ROOT/bin/dots-path-resolve" "$ROOT/bin/dots-ensure-flock" \
   "$ROOT/bin/dots-update-restart" "$retry_repo/bin/"
 cp "$ROOT/install/helpers/files.sh" "$retry_repo/install/helpers/files.sh"
 cat >"$SANDBOX/failing-stub/mise" <<'EOF'
 #!/usr/bin/env bash
-exit 1
+printf '%s\n' "$*" >>"$HOME/mise-retry-calls"
+[[ ${3:-} != "claude@2" ]]
 EOF
 chmod +x "$SANDBOX/failing-stub/mise"
+cp "$adoption_fixtures/bashrc.old" "$retry_home/.bashrc"
+cp "$adoption_fixtures/zshrc.old" "$retry_home/.zshrc"
 if HOME="$retry_home" PATH="$SANDBOX/failing-stub:$PATH" DOTS_PATH="$retry_repo" \
   DOTS_MIGRATION_STATE="$retry_state" GIT_CONFIG_GLOBAL="$retry_home/gitconfig" \
   "$ROOT/bin/dots-migrate" >/dev/null 2>&1; then
   fail "adoption migration succeeded after mise manifest merge failed"
 fi
 [[ ! -e "$retry_state/1788046742.sh" ]] || fail "failed adoption migration was marked complete"
-assertions=$((assertions + 2))
+grep -qx 'use --global claude@2' "$retry_home/mise-retry-calls" ||
+  fail "adoption migration did not attempt the pinned Claude major"
+grep -qx 'use --global codex@latest' "$retry_home/mise-retry-calls" ||
+  fail "one tool failure prevented later tools from being merged"
+cmp -s "$retry_home/.bashrc" "$retry_repo/default/bashrc" ||
+  fail "tool failure prevented later shell migration work"
+[[ ! -e "$retry_home/.config/nvim/lua/plugins/example.lua" ]] ||
+  fail "adoption migration restored the removed Neovim starter file"
+
+missing_source_home="$SANDBOX/missing-source-home"
+missing_source_state="$missing_source_home/.local/state/dots/migrations"
+mkdir -p "$missing_source_home"
+rm "$retry_repo/config/ghostty/config"
+if HOME="$missing_source_home" PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$retry_repo" \
+  DOTS_MIGRATION_STATE="$missing_source_state" GIT_CONFIG_GLOBAL="$missing_source_home/gitconfig" \
+  "$ROOT/bin/dots-migrate" >/dev/null 2>&1; then
+  fail "adoption migration accepted a missing shipped config"
+fi
+[[ ! -e $missing_source_state/1788046742.sh ]] ||
+  fail "adoption migration with missing source was marked complete"
+assertions=$((assertions + 8))
 
 # --- durability migration: executable path config and legacy integration
 # plumbing are retired without executing them; namespaced links replace only
@@ -197,6 +263,19 @@ cmp -s "$linked_venv_home/starship-target" "$venv_fixture" ||
   fail "virtualenv migration altered a Starship symlink target"
 assertions=$((assertions + 4))
 
+# --- newly published mise tool versions remain immediately eligible.
+python - "$ROOT/config/mise/config.toml" <<'PY' ||
+import sys
+import tomllib
+
+with open(sys.argv[1], "rb") as config_file:
+  config = tomllib.load(config_file)
+if config.get("settings", {}).get("minimum_release_age") != "0s":
+  raise SystemExit(1)
+PY
+  fail "mise config lost the zero release-age default"
+assertions=$((assertions + 1))
+
 # --- free-space guard
 DOTS_UPDATE_MIN_FREE_KB=1 "$ROOT/bin/dots-update-requires-free-space" ||
   fail "free-space check failed with tiny threshold"
@@ -281,7 +360,7 @@ wait "$holder_pid" 2>/dev/null || true
 "$ROOT/bin/dots-update-lock" true || fail "lock not released after SIGTERM"
 assertions=$((assertions + 1))
 
-# SIGKILL — the case no userspace cleanup can catch — also releases the
+# SIGKILL: the case no userspace cleanup can catch: also releases the
 # lock immediately, with no stale state left to reclaim
 "$ROOT/bin/dots-update-lock" sleep 30 &
 holder_pid=$!

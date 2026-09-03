@@ -28,7 +28,7 @@ set -eo pipefail
 SELF_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DOTS_PATH=$("$SELF_DIR/dots-path-resolve")
 DOTS_PATH=$(cd -- "$DOTS_PATH" && pwd)
-if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/dots-theme-set-templates" "$@"; fi
+if [[ $SELF_DIR != "$DOTS_PATH/bin" ]]; then exec "$DOTS_PATH/bin/${BASH_SOURCE[0]##*/}" "$@"; fi
 
 staging=${1:?Usage: dots-theme-set-templates <staged-theme-dir>}
 colors_file="$staging/colors.toml"
@@ -65,7 +65,7 @@ has_selection_background=""
 has_selection_foreground=""
 
 key_re='^[[:space:]]*([A-Za-z0-9_]+)[[:space:]]*=[[:space:]]*"([^"]*)"'
-while IFS= read -r line; do
+while IFS= read -r line || [[ -n $line ]]; do
   [[ $line =~ $key_re ]] || continue
   key=${BASH_REMATCH[1]}
   val=${BASH_REMATCH[2]}
@@ -86,7 +86,7 @@ if [[ -z $has_selection_foreground && -n $bright_foreground_value ]]; then
   emit_rules selection_foreground "$bright_foreground_value" >>"$sedfile"
 fi
 
-render() { # render <template> — output lands in staging, named without .tpl
+render() { # render <template>: output lands in staging, named without .tpl
   local tpl=$1 out
   out="$staging/$(basename "${tpl%.tpl}")"
   if [[ -L $out || ( -e $out && ! -f $out ) ]]; then

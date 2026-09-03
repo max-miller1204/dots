@@ -44,6 +44,55 @@ dots_file_assert_safe_parents() {
   done
 }
 
+# Compare a pathname with an already-open descriptor without trusting a
+# platform-specific /dev/fd inode representation. Both device and inode are
+# required: inode numbers are unique only within one filesystem.
+dots_file_path_matches_fd() { # dots_file_path_matches_fd <path> <fd-number>
+  local path=$1 fd=$2 path_id fd_id
+
+  [[ $fd =~ ^[0-9]+$ ]] || return 1
+  if [[ $(uname -s) == "Darwin" ]]; then
+    path_id=$(stat -f '%d:%i' "$path") || return 1
+    fd_id=$(perl -e '
+      my $fd = shift;
+      open(my $fh, "<&=$fd") or exit 1;
+      my @stat = stat($fh);
+      print "$stat[0]:$stat[1]";
+    ' "$fd") || return 1
+  else
+    path_id=$(stat -Lc '%d:%i' "$path") || return 1
+    fd_id=$(stat -Lc '%d:%i' "/proc/self/fd/$fd") || return 1
+  fi
+  [[ $path_id == "$fd_id" ]]
+}
+
+# Enumerate shipped config files relative to their config root. Keep the
+# NUL-delimited contract so names containing whitespace or newlines are safe.
+dots_config_find_files() { # dots_config_find_files <config-root>
+  local root=$1
+
+  [[ -d $root && ! -L $root ]] || return 1
+  (cd "$root" && find . -type f ! -name '.DS_Store' -print0)
+}
+
+dots_config_for_each_file() { # dots_config_for_each_file <config-root> <callback>
+  local root=$1 callback=$2 file manifest rc=0
+
+  manifest=$(mktemp "${TMPDIR:-/tmp}/dots-config-files.XXXXXX") || return 1
+  if ! dots_config_find_files "$root" >"$manifest"; then
+    rm -f "$manifest"
+    return 1
+  fi
+  while IFS= read -r -d '' file; do
+    "$callback" "$file" || {
+      rc=$?
+      break
+    }
+  done <"$manifest"
+  rm -f "$manifest"
+  return "$rc"
+}
+
 # Replace a destination with a regular file copied from src.
 # Usage: dots_file_replace <src> <dest> <backup|discard> [ownership-root]
 # The ownership root defaults to $HOME. Sets DOTS_FILE_CHANGED and
