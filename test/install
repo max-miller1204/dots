@@ -210,6 +210,20 @@ fi
   fail "unsafe completion marker prevented runtime path repair"
 assertions=$((assertions + 3))
 
+# Repair installs fail closed rather than overwriting malformed runtime authority.
+for invalid_runtime in 'bad:path' 'relative/runtime'; do
+  invalid_path_home=$(mktemp -d "$SANDBOX/invalid-path-home.XXXXXX")
+  mkdir -p "$invalid_path_home/.config/dots"
+  printf '%s\n' "$invalid_runtime" >"$invalid_path_home/.config/dots/path"
+  if HOME="$invalid_path_home" PATH="$stub:$runtime_path" \
+    "$repo/bin/dots-install" --developer >/dev/null 2>&1; then
+    fail "repair install accepted malformed runtime path: $invalid_runtime"
+  fi
+  [[ $(<"$invalid_path_home/.config/dots/path") == "$invalid_runtime" ]] ||
+    fail "repair install overwrote malformed runtime path: $invalid_runtime"
+done
+assertions=$((assertions + 4))
+
 # A checkout path that cannot be represented safely is rejected before setup.
 bad_repo="$SANDBOX/repo:invalid"
 cp -R "$repo" "$bad_repo"
