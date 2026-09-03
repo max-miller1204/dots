@@ -27,7 +27,12 @@ setup_sandbox() { # isolate $HOME; call once per suite
 #!/usr/bin/env bash
 exit 0
 TMUX
-  chmod +x "$SANDBOX/stub/tmux"
+  cat >"$SANDBOX/stub/brew" <<'BREW'
+#!/usr/bin/env bash
+echo "test attempted to invoke Homebrew" >&2
+exit 125
+BREW
+  chmod +x "$SANDBOX/stub/tmux" "$SANDBOX/stub/brew"
   export PATH="$SANDBOX/stub:$ROOT/bin:$PATH"
   # Ambient config must not reach the suites: pipeline knobs exported in the
   # developer's shell, and host git config via the non-HOME lookup paths.

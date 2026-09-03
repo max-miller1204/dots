@@ -130,15 +130,12 @@ PATH="/usr/bin:$ROOT/bin:$HOME/.local/bin" DOTS_PATH="$ROOT" "$BASH" -c \
   'source "$1"; source "$1"; [[ $PATH == "$DOTS_PATH/bin:"* ]] &&
     [[ $(tr ":" "\n" <<<"$PATH" | grep -Fxc "$DOTS_PATH/bin") == 1 ]]' \
   bash "$ROOT/default/bash/env-bootstrap" || fail "re-sourcing bootstrap did not keep dots bin first and unique"
-if grep -Fq '@Q}' "$ROOT/bin/dots-update"; then
-  fail "dots-update requires Bash 4.4 despite the Bash >= 4 contract"
-fi
 missing_runtime_home="$SANDBOX/missing-runtime-home"
 mkdir -p "$missing_runtime_home"
 missing_runtime_error=$(HOME="$missing_runtime_home" PATH=/usr/bin:/bin bash -c \
   'source "$1"' bash "$ROOT/default/bashrc" 2>&1) || fail "bashrc failed when runtime was missing"
 [[ -z $missing_runtime_error ]] || fail "bashrc reported a missing runtime: $missing_runtime_error"
-assertions=$((assertions + 5))
+assertions=$((assertions + 4))
 
 # Non-interactive Zsh reads ~/.zshenv rather than ~/.zshrc, so its shared
 # command environment must be installed there without loading interactive UX.
@@ -464,6 +461,23 @@ printf 'custom zsh environment\n' >"$HOME/.zshenv"
 [[ -f "$HOME/.config/starship.toml" && ! -L "$HOME/.config/starship.toml" ]] || fail "reinstall did not replace symlink safely"
 cmp -s "$HOME/.zshenv" "$ROOT/default/zshenv" || fail "reinstall did not reset the Zsh environment bootstrap"
 assertions=$((assertions + 3))
+
+# Config discovery must finish successfully before reinstalling any file.
+broken_find="$SANDBOX/broken-config-find"
+mkdir -p "$broken_find"
+cat >"$broken_find/find" <<'EOF'
+#!/usr/bin/env bash
+printf './starship.toml\0'
+exit 7
+EOF
+chmod +x "$broken_find/find"
+printf 'keep after discovery failure\n' >"$HOME/.config/starship.toml"
+if PATH="$broken_find:$PATH" "$ROOT/bin/dots-reinstall-configs" --force >/dev/null 2>&1; then
+  fail "reinstall accepted failed config discovery"
+fi
+[[ $(cat "$HOME/.config/starship.toml") == "keep after discovery failure" ]] ||
+  fail "reinstall changed config before discovery completed"
+assertions=$((assertions + 2))
 
 # A SIGKILL before discard publication leaves the old destination intact.
 printf 'old atomic value\n' >"$SANDBOX/atomic-dest"

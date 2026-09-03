@@ -73,9 +73,10 @@ BREW
   fallback_home="$SANDBOX/fallback-home"
   fallback_prefix="$fallback_home/homebrew"
   fallback_runtime="$SANDBOX/fallback-runtime"
-  fallback_path="$stub:$fallback_runtime:/usr/bin:/bin"
+  fallback_path="$fallback_runtime:/usr/bin:/bin"
   mkdir -p "$fallback_prefix/bin" "$fallback_prefix/sbin" "$fallback_runtime"
   ln -s "$BASH" "$fallback_runtime/bash"
+  ln -s "$stub/mise" "$fallback_runtime/mise"
   ln -s "$BASH" "$fallback_prefix/bin/bash"
   cat >"$fallback_prefix/bin/brew" <<'BREW'
 #!/usr/bin/env bash

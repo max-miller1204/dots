@@ -23,10 +23,13 @@ if [[ ${1:-} != "--force" ]]; then
   [[ $reply == "y" || $reply == "Y" ]] || { echo "Aborted."; exit 1; }
 fi
 
-while IFS= read -r -d '' file; do
+reinstall_config_file() {
+  local file=$1
+
   file=${file#./}
   dots_file_replace "$DOTS_PATH/config/$file" "$HOME/.config/$file" discard
-done < <(dots_config_find_files "$DOTS_PATH/config")
+}
+dots_config_for_each_file "$DOTS_PATH/config" reinstall_config_file
 
 dots_file_replace "$DOTS_PATH/default/bashrc" "$HOME/.bashrc" discard
 dots_file_replace "$DOTS_PATH/default/bash_profile" "$HOME/.bash_profile" discard

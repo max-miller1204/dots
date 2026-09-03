@@ -75,6 +75,24 @@ dots_config_find_files() { # dots_config_find_files <config-root>
   (cd "$root" && find . -type f ! -name '.DS_Store' -print0)
 }
 
+dots_config_for_each_file() { # dots_config_for_each_file <config-root> <callback>
+  local root=$1 callback=$2 file manifest rc=0
+
+  manifest=$(mktemp "${TMPDIR:-/tmp}/dots-config-files.XXXXXX") || return 1
+  if ! dots_config_find_files "$root" >"$manifest"; then
+    rm -f "$manifest"
+    return 1
+  fi
+  while IFS= read -r -d '' file; do
+    "$callback" "$file" || {
+      rc=$?
+      break
+    }
+  done <"$manifest"
+  rm -f "$manifest"
+  return "$rc"
+}
+
 # Replace a destination with a regular file copied from src.
 # Usage: dots_file_replace <src> <dest> <backup|discard> [ownership-root]
 # The ownership root defaults to $HOME. Sets DOTS_FILE_CHANGED and

@@ -264,7 +264,15 @@ cmp -s "$linked_venv_home/starship-target" "$venv_fixture" ||
 assertions=$((assertions + 4))
 
 # --- newly published mise tool versions remain immediately eligible.
-grep -q '^minimum_release_age = "0s"$' "$ROOT/config/mise/config.toml" ||
+python - "$ROOT/config/mise/config.toml" <<'PY' ||
+import sys
+import tomllib
+
+with open(sys.argv[1], "rb") as config_file:
+  config = tomllib.load(config_file)
+if config.get("settings", {}).get("minimum_release_age") != "0s":
+  raise SystemExit(1)
+PY
   fail "mise config lost the zero release-age default"
 assertions=$((assertions + 1))
 

@@ -188,9 +188,12 @@ fi
 
 # 3. Seed configs: config/** -> ~/.config/**, backing up anything replaced
 echo "Seeding configs into ~/.config..."
-while IFS= read -r -d '' file; do
+seed_config_file() {
+  local file=$1
+
   dots-refresh-config "${file#./}"
-done < <(dots_config_find_files "$DOTS_PATH/config")
+}
+dots_config_for_each_file "$DOTS_PATH/config" seed_config_file
 
 # 4. Shell integration: seed rc files, backing up differing versions
 seed_home_file() { # seed_home_file <repo-file> <home-file>
