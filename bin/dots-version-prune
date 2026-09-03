@@ -28,7 +28,7 @@ if ! dots_release_lock_fd_valid; then
 fi
 
 if [[ -z $force ]]; then
-  printf 'Remove old verified dots releases (preserving current and previous)? [y/N] '
+  printf 'Remove inactive verified dots releases (preserving current and previous)? [y/N] '
   answer=""
   IFS= read -r answer || true
   case "$answer" in
