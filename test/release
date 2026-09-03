@@ -222,23 +222,46 @@ if "$ROOT/scripts/build-installer.sh" 01.2.3 dots-01.2.3.tar.gz \
   fail "installer renderer accepted a noncanonical release version"
 fi
 validator_installer="$SANDBOX/validator-install.sh"
-"$ROOT/scripts/build-installer.sh" 1.2.3 dots-1.2.3.tar.gz \
-  0000000000000000000000000000000000000000000000000000000000000000 \
-  "$validator_installer"
-awk '
-  /^# DOTS_ARCHIVE_VALIDATOR_BEGIN$/ { capture = 1; next }
-  /^# DOTS_ARCHIVE_VALIDATOR_END$/ { capture = 0; next }
-  capture { print }
-' "$ROOT/install/helpers/archive.sh" >"$SANDBOX/shared-validator"
-awk '
-  /^dots_archive_validate\(\) \{/ { capture = 1 }
-  capture { print }
-  capture && /^}$/ { exit }
-' "$validator_installer" >"$SANDBOX/embedded-validator"
-cmp -s "$SANDBOX/shared-validator" "$SANDBOX/embedded-validator" ||
-  fail "generated installer did not embed the exact shared archive validator"
-"$BASH" -n "$validator_installer" || fail "generated installer has invalid Bash syntax"
-assertions=$((assertions + 10))
+validator_version=1.2.3
+validator_root="dots-$validator_version"
+validator_build="$SANDBOX/validator-build"
+validator_outside="$SANDBOX/validator-outside"
+mkdir -p "$validator_build/$validator_root" "$validator_outside"
+printf 'escape\n' >"$validator_build/escape"
+validator_traversal="$SANDBOX/validator-traversal.tar.gz"
+tar -czf "$validator_traversal" -C "$validator_build" "$validator_root/../escape"
+ln -s "$validator_outside/special-write" "$validator_build/$validator_root/escape-link"
+validator_special="$SANDBOX/validator-special.tar.gz"
+tar -czf "$validator_special" -C "$validator_build" "$validator_root"
+validator_empty="$SANDBOX/validator-empty.tar.gz"
+tar -czf "$validator_empty" -T /dev/null
+
+for validator_case in traversal special empty; do
+  case "$validator_case" in
+    traversal) validator_archive=$validator_traversal ;;
+    special) validator_archive=$validator_special ;;
+    empty) validator_archive=$validator_empty ;;
+  esac
+  validator_sha=$(dots_release_sha256 "$validator_archive")
+  validator_installer="$SANDBOX/validator-$validator_case-install.sh"
+  validator_home="$SANDBOX/validator-$validator_case-home"
+  validator_tmp="$SANDBOX/validator-$validator_case-tmp"
+  mkdir -p "$validator_home" "$validator_tmp"
+  "$ROOT/scripts/build-installer.sh" "$validator_version" "$validator_root.tar.gz" \
+    "$validator_sha" "$validator_installer"
+  if HOME="$validator_home" TMPDIR="$validator_tmp" PATH="$SANDBOX/stub:$PATH" \
+    DOTS_RELEASE_ARCHIVE_URL="file://$validator_archive" \
+    "$BASH" "$validator_installer" >/dev/null 2>&1; then
+    fail "generated installer accepted a $validator_case archive"
+  fi
+  [[ ! -e $validator_home/.local/share/dots/current ]] ||
+    fail "generated installer activated a $validator_case archive"
+  [[ -z $(find "$validator_home" -mindepth 1 -print -quit) ]] ||
+    fail "generated installer wrote outside the release store for a $validator_case archive"
+done
+[[ ! -e $validator_outside/special-write ]] ||
+  fail "generated installer wrote through a special archive entry"
+assertions=$((assertions + 16))
 
 # Explicit version installs bound and retry the checksum request just like the
 # manifest and archive downloads.

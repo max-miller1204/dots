@@ -385,20 +385,31 @@ cmp -s "$linked_venv_home/starship-target" "$venv_fixture" ||
   fail "virtualenv migration altered a Starship symlink target"
 assertions=$((assertions + 4))
 
-# --- newly published mise tool versions remain immediately eligible. Keep
-# this dependency-free so the test runs before mise provisions Python.
-if ! awk '
-  /^\[settings\][[:space:]]*$/ { in_settings = 1; next }
-  /^\[/ { in_settings = 0 }
-  in_settings && /^[[:space:]]*minimum_release_age[[:space:]]*=/ {
-    entries++
-    if ($0 ~ /^[[:space:]]*minimum_release_age[[:space:]]*=[[:space:]]*"0s"[[:space:]]*$/) exact++
-  }
-  END { exit entries == 1 && exact == 1 ? 0 : 1 }
-' "$ROOT/config/mise/config.toml"; then
-  fail "mise config lost the zero release-age default"
+# --- newly published mise tool versions remain immediately eligible. Parse
+# the manifest into a normalized model without relying on provisioned tools.
+normalized_mise="$SANDBOX/mise-config.normalized"
+if ! awk -f "$ROOT/test/toml-normalize.awk" "$ROOT/config/mise/config.toml" >"$normalized_mise"; then
+  fail "mise config is not valid supported TOML"
 fi
-assertions=$((assertions + 1))
+declare -A mise_types mise_values
+while IFS=$'\t' read -r value_type value_path value; do
+  mise_types["$value_path"]=$value_type
+  mise_values["$value_path"]=$value
+done <"$normalized_mise"
+[[ ${mise_types[settings.minimum_release_age]:-} == "basic-string" &&
+  ${mise_values[settings.minimum_release_age]:-} == "0s" ]] ||
+  fail "mise config lost the zero release-age default"
+duplicate_table="$SANDBOX/duplicate-table.toml"
+printf '[settings]\nminimum_release_age = "0s"\n[settings]\nother = "value"\n' >"$duplicate_table"
+if awk -f "$ROOT/test/toml-normalize.awk" "$duplicate_table" >/dev/null 2>&1; then
+  fail "TOML normalizer accepted a duplicate table"
+fi
+duplicate_key="$SANDBOX/duplicate-key.toml"
+printf '[settings]\nminimum_release_age = "0s"\nminimum_release_age = "1s"\n' >"$duplicate_key"
+if awk -f "$ROOT/test/toml-normalize.awk" "$duplicate_key" >/dev/null 2>&1; then
+  fail "TOML normalizer accepted a duplicate key"
+fi
+assertions=$((assertions + 3))
 
 # --- free-space guard
 DOTS_UPDATE_MIN_FREE_KB=1 "$ROOT/bin/dots-update-requires-free-space" ||

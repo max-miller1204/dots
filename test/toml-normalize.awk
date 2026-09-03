@@ -1,0 +1,115 @@
+function fail(message) {
+  print "invalid TOML: " message > "/dev/stderr"
+  exit 1
+}
+
+function trim(value) {
+  sub(/^[[:space:]]+/, "", value)
+  sub(/[[:space:]]+$/, "", value)
+  return value
+}
+
+function uncomment(value, position, character, quoted, escaped, result) {
+  result = ""
+  for (position = 1; position <= length(value); position++) {
+    character = substr(value, position, 1)
+    if (quoted) {
+      result = result character
+      if (escaped) {
+        escaped = 0
+      } else if (character == "\\") {
+        escaped = 1
+      } else if (character == "\"") {
+        quoted = 0
+      }
+    } else if (character == "#") {
+      break
+    } else {
+      result = result character
+      if (character == "\"") quoted = 1
+    }
+  }
+  if (quoted || escaped) fail("unterminated string on line " NR)
+  return result
+}
+
+function assignment_separator(value, position, character, quoted, escaped) {
+  for (position = 1; position <= length(value); position++) {
+    character = substr(value, position, 1)
+    if (quoted) {
+      if (escaped) {
+        escaped = 0
+      } else if (character == "\\") {
+        escaped = 1
+      } else if (character == "\"") {
+        quoted = 0
+      }
+    } else if (character == "\"") {
+      quoted = 1
+    } else if (character == "=") {
+      return position
+    }
+  }
+  return 0
+}
+
+function normalize_key(value) {
+  value = trim(value)
+  if (value ~ /^[A-Za-z0-9_-]+$/) return value
+  if (value ~ /^"[^"\\]+"$/) return substr(value, 2, length(value) - 2)
+  fail("unsupported key on line " NR)
+}
+
+function record(type, path, value) {
+  if (path in keys) fail("duplicate key " path " on line " NR)
+  keys[path] = 1
+  print type "\t" path "\t" value
+}
+
+function normalize_scalar(path, value) {
+  value = trim(value)
+  if (value ~ /^"[^"\\]*"$/) {
+    record("basic-string", path, substr(value, 2, length(value) - 2))
+  } else if (value == "true" || value == "false") {
+    record("boolean", path, value)
+  } else if (value ~ /^[-+]?[0-9][0-9_]*$/) {
+    record("integer", path, value)
+  } else {
+    fail("unsupported value for " path " on line " NR)
+  }
+}
+
+function normalize_inline(path, value, body, count, parts, position, separator, key, item_path) {
+  body = trim(substr(value, 2, length(value) - 2))
+  record("inline-table", path, "")
+  if (body == "") return
+  count = split(body, parts, /,[[:space:]]*/)
+  for (position = 1; position <= count; position++) {
+    separator = assignment_separator(parts[position])
+    if (!separator) fail("invalid inline table on line " NR)
+    key = normalize_key(substr(parts[position], 1, separator - 1))
+    item_path = path "." key
+    normalize_scalar(item_path, substr(parts[position], separator + 1))
+  }
+}
+
+{
+  line = trim(uncomment($0))
+  if (line == "") next
+  if (line ~ /^\[[A-Za-z0-9_-]+\]$/) {
+    table = substr(line, 2, length(line) - 2)
+    if (table in tables) fail("duplicate table " table " on line " NR)
+    tables[table] = 1
+    next
+  }
+  separator = assignment_separator(line)
+  if (!separator) fail("invalid assignment on line " NR)
+  key = normalize_key(substr(line, 1, separator - 1))
+  path = table == "" ? key : table "." key
+  value = trim(substr(line, separator + 1))
+  if (value ~ /^\{.*\}$/) {
+    normalize_inline(path, value)
+  } else {
+    normalize_scalar(path, value)
+  }
+}
