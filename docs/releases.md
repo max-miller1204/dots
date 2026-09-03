@@ -1,58 +1,76 @@
 # Releases
 
-The root `version` file is the release version source of truth. Releases use
-stable semantic versions (`X.Y.Z`) and matching Git tags (`vX.Y.Z`). Update and
-commit `version` before creating the tag; the release build fails if they do not
-match. Publish fixes as a new version rather than replacing an existing release.
+The root `version` file specifies the release version. Stable releases use
+semantic versions in the `X.Y.Z` format. Each release has a matching `vX.Y.Z`
+Git tag. Update `version` before you create the tag. Commit the change before
+you create the tag. The release build fails if the version and the tag do not
+match. Publish each fix as a new version. Do not replace an existing release.
 
-Pushing a version tag runs the GitHub release workflow. Its macOS and Ubuntu
-jobs build and smoke-test the release outputs; the publish job downloads and
-publishes the Ubuntu job's tested outputs without rebuilding them. Those
-outputs are `dots-X.Y.Z.tar.gz`, `install.sh`, `SHA256SUMS`, and the
-updater-readable `dots-release.txt` manifest. The generated installer pins that
-release's archive name and SHA-256; it checks the artifact's integrity before
-delegating to the packaged transactional installer. Release artifacts are not
-cryptographically signed, so this check depends on the published checksum
-remaining trustworthy. The archive contains only the versioned runtime payload:
-`bin`, `config`, `default`, `install`, `migrations`, `themes`, and `version`,
-under a `dots-X.Y.Z` directory.
+A version tag push starts the GitHub release workflow. The macOS and Ubuntu
+jobs build and smoke-test the release output. The publish job downloads the
+tested output from the Ubuntu job. It publishes this output without a new
+build. The output contains these files:
 
-To build the same files locally from the current commit:
+- `dots-X.Y.Z.tar.gz`
+- `install.sh`
+- `SHA256SUMS`
+- The `dots-release.txt` manifest that the updater can read
+
+The generated installer specifies the archive name and SHA-256 checksum for
+the release. It verifies the integrity of the artifact. It then runs the
+packaged transactional installer. The release artifacts do not have
+cryptographic signatures. Thus, the integrity check depends on the integrity
+of the published checksum.
+
+The archive contains only the versioned runtime files. It contains `bin`,
+`config`, `default`, `install`, `migrations`, `themes`, and `version`. These
+files are in a `dots-X.Y.Z` directory.
+
+Use this command to build the same files locally from the current commit:
 
 ```bash
 ./scripts/build-release.sh vX.Y.Z
 ```
 
-Pass a second argument to choose an output directory. The build always reads
-committed `HEAD`, so uncommitted files cannot leak into a release. Verify
-downloaded assets with `sha256sum -c SHA256SUMS` on Linux or
-`shasum -a 256 -c SHA256SUMS` on macOS.
+Use a second argument to specify an output directory. The build always reads
+the committed `HEAD`. Thus, the build cannot include uncommitted files. On
+Linux, use `sha256sum -c SHA256SUMS` to verify downloaded assets. On macOS, use
+`shasum -a 256 -c SHA256SUMS`.
 
 ## Installed releases
 
-Stable releases are unpacked into `~/.local/share/dots/releases/<version>`.
-Owned `current` and `previous` symlinks provide runtime rollback. Their
-activation and recovery protocol is described in
-[`docs/update-process.md`](update-process.md#activation-and-rollback). The
-editable checkout is independent and may remain dirty while stable
-`dots update` installs releases.
+The installer unpacks stable releases into
+`~/.local/share/dots/releases/<version>`. The owned `current` and `previous`
+symlinks permit runtime rollback. See
+[`docs/update-process.md`](update-process.md#activation-and-rollback) for the
+activation and recovery protocol. The editable checkout is independent of
+these releases. It can contain local changes when `dots update` installs a
+stable release.
 
-Normal installations run the latest release's `install.sh` directly and do not
-require a Git checkout. Use `dots version install`, `dots version list`,
-`dots version rollback`, and `dots version prune` to manage bundles afterward.
-`dots version list` verifies
-each candidate's ownership marker and complete integrity inventory, and labels
-unusable candidates `! invalid`.
+A normal installation runs the `install.sh` file from the latest release. It
+does not require a Git checkout. After installation, use these commands to
+manage release bundles:
 
-`dots version prune` reconciles interrupted pointer updates, preserves both the
-current and previous releases, and removes only inactive release directories
-whose ownership marker and full SHA-256 integrity inventory still verify.
-Symlinks, malformed names, foreign directories, and modified releases are never
-removed; they are reported as skipped invalid entries for manual inspection.
+- `dots version install`
+- `dots version list`
+- `dots version rollback`
+- `dots version prune`
+
+The `dots version list` command verifies the ownership marker and the complete
+integrity inventory for each candidate. It labels an unusable candidate as
+`! invalid`.
+
+The `dots version prune` command reconciles interrupted pointer updates. It
+preserves the current and previous releases. It removes an inactive release
+directory only if the ownership marker and the complete SHA-256 integrity
+inventory are valid. It does not remove symlinks, malformed names, foreign
+directories, or modified releases. It reports these invalid entries for manual
+inspection.
+
 Pruning requires interactive confirmation. Use `dots version prune --force`
-only when that confirmation is intentionally unnecessary, such as in
-automation. The operation holds the same update lock used by installation,
-activation, and rollback.
+only when you intentionally bypass confirmation. For example, use this option
+in automation that cannot provide confirmation. The operation holds the update
+lock that installation, activation, and rollback also use.
 
-Use `dots dev link <checkout>` only while testing unreleased code, and `dots dev
-unlink` to return to the stable runtime.
+Use `dots dev link <checkout>` only to test unreleased code. Use
+`dots dev unlink` to return to the stable runtime.

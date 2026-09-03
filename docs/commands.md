@@ -1,41 +1,47 @@
 # Commands
 
-Run `dots` for the complete generated command listing or `dots help <group>` for one group. Every command also supports `--help` or `-h`. Interactive Bash and Zsh complete visible groups, nested commands, options, themes, hook events, and config paths.
+Run `dots` to show the complete generated command list. Run `dots help <group>`
+to show one group. Use `--help` or `-h` with each command. Interactive Bash and
+Zsh shells complete visible groups, nested commands, options, themes, hook
+events, and configuration paths.
 
 | Command | Purpose |
 | --- | --- |
-| `dots install` | Install the latest stable runtime, configs, shell, and tools |
-| `dots install --developer` | Install directly from the current checkout |
-| `dots update` | Update the stable release or dev checkout, then tools and migrations |
-| `dots update available` | Report a published release or pending dev commits |
-| `dots version` | Print the active dots version and runtime mode |
-| `dots version install [version]` | Install and activate a release, then converge tools and migrations |
-| `dots version adopt` | Move a checkout-backed install to stable and converge it |
-| `dots version list` | List releases (`*` current, `-` previous, `!` invalid) |
-| `dots version prune [--force]` | Remove inactive verified releases, preserving current and previous |
-| `dots version rollback` | Switch the runtime back to the previous release |
-| `dots dev link <checkout>` | Use an editable checkout as the active runtime |
-| `dots dev unlink` | Return to the current stable release |
-| `dots migrate [--pending\|--check]` | Run or list pending migrations |
-| `dots refresh config <path>` | Reset one live config from the repository, with backup and diff |
-| `dots reinstall configs` | Reset every live config to the shipped defaults |
-| `dots config import <path>` | Copy a live config into the registered source checkout |
-| `dots theme list` | List available themes |
-| `dots theme current` | Print the active theme |
-| `dots theme set <name>` | Select and render a theme |
-| `dots theme sync pi --activate` | Make Pi use the generated dots theme |
-| `dots theme sync claude --activate` | Make Claude use the generated dots theme |
-| `dots hook <event>` | Run one user hook event |
-| `dots hook install <event> <script>` | Install a user hook script |
-| `dots pkg add <tool>` | Add a tool to the live global mise manifest |
-| `dots pkg drop <tool>` | Remove a tool from the live global mise manifest |
+| `dots install` | Install the latest stable runtime, configuration files, shell, and tools. |
+| `dots install --developer` | Install directly from the current checkout. |
+| `dots update` | Update the stable release or developer checkout. Then update tools. Run migrations. |
+| `dots update available` | Report an available release or pending developer commits. |
+| `dots version` | Show the active Dots version and runtime mode. |
+| `dots version install [version]` | Install a release. Activate the release. Then update tools. Run migrations. |
+| `dots version adopt` | Change an installation from checkout mode to stable mode. Then update tools. Run migrations. |
+| `dots version list` | List releases. `*` is current, `-` is previous, and `!` is invalid. |
+| `dots version prune [--force]` | Remove inactive verified releases. Keep the current and previous releases. |
+| `dots version rollback` | Change the runtime to the previous release. |
+| `dots dev link <checkout>` | Use an editable checkout as the active runtime. |
+| `dots dev unlink` | Return to the current stable release. |
+| `dots migrate [--pending\|--check]` | Run or list pending migrations. |
+| `dots refresh config <path>` | Reset one live configuration from the repository. Create a backup. Show the differences. |
+| `dots reinstall configs` | Reset all live configuration files to the supplied defaults. |
+| `dots config import <path>` | Copy a live configuration into the registered source checkout. |
+| `dots theme list` | List available themes. |
+| `dots theme current` | Show the active theme. |
+| `dots theme set <name>` | Select a theme. Render its templates. |
+| `dots theme sync pi --activate` | Configure Pi to use the generated dots theme. |
+| `dots theme sync claude --activate` | Configure Claude to use the generated dots theme. |
+| `dots hook <event>` | Run one user hook event. |
+| `dots hook install <event> <script>` | Install a user hook script. |
+| `dots pkg add <tool>` | Add a tool to the live global mise manifest. |
+| `dots pkg drop <tool>` | Remove a tool from the live global mise manifest. |
 
 ## Update availability exit codes
 
-`dots update available` uses distinct statuses for scripts and prompt integrations:
+`dots update available` uses these exit codes in scripts and prompt
+integrations:
 
-- `0`: updates are available
-- `1`: the installed release or developer checkout is current
-- `2`: release metadata or developer upstream state cannot be determined
+- `0`: Updates are available.
+- `1`: The installed release or developer checkout is current.
+- `2`: The command cannot determine the release metadata or the upstream state
+  of the developer checkout.
 
-See [`docs/update-process.md`](update-process.md) for the full update order and failure behavior.
+For the complete update sequence and failure behavior, refer to
+[`docs/update-process.md`](update-process.md).

@@ -1,8 +1,11 @@
 # Packages
 
-Mise is the only cross-platform development-tool layer. The repository manifest is [`config/mise/config.toml`](../config/mise/config.toml); installation copies it to `~/.config/mise/config.toml`.
+Mise is the only cross-platform layer for development tools. The repository
+manifest is [`config/mise/config.toml`](../config/mise/config.toml).
+Installation copies the manifest to `~/.config/mise/config.toml`.
 
-`dots install` and `dots update` run mise against the live manifest so each machine converges on the same tool set.
+`dots install` and `dots update` run mise against the live manifest. Thus,
+each machine gets the same tool set.
 
 ## Add a tool
 
@@ -13,7 +16,10 @@ git add config/mise/config.toml
 git commit -m "Add ripgrep"
 ```
 
-`dots pkg add` is a wrapper around `mise use --global`. Importing the live config writes it into the registered editable checkout. After the change is committed and published in a dots release, `dots update` installs it on stable machines.
+`dots pkg add` is a wrapper for `mise use --global`. Import the live
+configuration to write it to the registered editable checkout. Commit the
+change. Publish the change in a Dots release. Then, `dots update` installs the
+tool on stable machines.
 
 ## Remove a tool
 
@@ -22,13 +28,18 @@ dots pkg drop ripgrep
 dots config import mise/config.toml
 ```
 
-Then commit the manifest change.
+Then, commit the manifest change.
 
 ## Versions
 
-The manifest currently uses rolling versions for command-line tools and the active LTS line for Node. It deliberately sets `minimum_release_age = "0s"` so newly published tool versions are immediately eligible on every managed machine. Mise itself is not pinned; the official standalone installation tracks current releases through `mise self-update`.
+The manifest currently uses rolling versions for command-line tools. It uses
+the active long-term support (LTS) line for Node. The manifest intentionally sets
+`minimum_release_age = "0s"`. Thus, newly published tool versions are
+immediately eligible on each managed machine. Dots does not pin mise. The
+official standalone installation tracks current releases through
+`mise self-update`.
 
-Use these commands to inspect state:
+Use these commands to examine the state:
 
 ```bash
 mise --version
@@ -37,23 +48,29 @@ mise outdated
 mise doctor
 ```
 
-Dots expects the official standalone mise installation on macOS, Ubuntu, and WSL. See [`docs/setup.md`](setup.md) for installation instructions and the Omarchy comparison.
+Dots expects the official standalone mise installation on macOS, Ubuntu, and
+Windows Subsystem for Linux (WSL). See [`docs/setup.md`](setup.md) for
+installation instructions and the
+comparison with Omarchy.
 
 ## Aube and npm tools
 
-Mise installs `npm:` tools with its embedded Aube package manager. Aube applies security and popularity checks before installation.
+Mise uses the embedded Aube package manager to install `npm:` tools. Before
+installation, Aube applies security and popularity checks.
 
-Stepstone is maintained as part of this setup but has a low npm download count. Its manifest entry uses a scoped exception:
+This setup includes Stepstone. Stepstone has a low npm download count. The
+Stepstone manifest entry uses this limited exception:
 
 ```toml
 "npm:stepstone" = { version = "latest", allow_low_downloads = true }
 ```
 
-That option approves only the requested Stepstone package for Aube's
-download-count gate. It does not disable that gate globally or automatically
-exempt transitive dependencies. The separate global release-age policy remains
-`0s` by design.
+The option approves only the requested Stepstone package for the Aube
+download-count gate. The option does not disable the gate globally. The option
+does not automatically exempt transitive dependencies. By design, the separate
+global release-age policy remains `0s`.
 
 ## Fonts
 
-Terminal and Starship defaults use platform-font glyphs only. Dots does not silently install or require a Nerd Font.
+The Terminal and Starship defaults use only platform font glyphs. Dots does not
+automatically install a Nerd Font. Dots does not require a Nerd Font.
