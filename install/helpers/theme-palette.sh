@@ -37,13 +37,21 @@ dots_theme_palette_decode_unicode() { # <codepoint>; sets DOTS_THEME_DECODED
 # shellcheck disable=SC2094
 dots_theme_palette_parse() { # <colors.toml> <callback>
   local file=$1 callback=$2 line line_number=0 key rest value ch escape hex decoded
-  local index length codepoint complete
+  local index length codepoint complete byte_dump
   local -A seen=()
 
   [[ ! -L $file && -f $file ]] || {
     echo "Invalid theme palette: expected a regular file: $file" >&2
     return 1
   }
+  if ! byte_dump=$(LC_ALL=C od -An -v -t x1 "$file"); then
+    echo "Invalid theme palette: could not inspect bytes: $file" >&2
+    return 1
+  fi
+  if [[ $byte_dump =~ (^|[[:space:]])00($|[[:space:]]) ]]; then
+    echo "Invalid theme palette: NUL byte is not allowed: $file" >&2
+    return 1
+  fi
 
   while IFS= read -r line || [[ -n $line ]]; do
     ((line_number += 1))

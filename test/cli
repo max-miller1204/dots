@@ -869,6 +869,28 @@ for invalid_palette_line in \
 done
 assertions=$((assertions + 2))
 
+nul_palette="$SANDBOX/invalid-palette-nul"
+nul_callback_marker="$SANDBOX/nul-palette-callback"
+mkdir -p "$nul_palette"
+cp "$ROOT/themes/tokyo-night/colors.toml" "$nul_palette/colors.toml"
+printf 'bad = "before\0after"\n' >>"$nul_palette/colors.toml"
+source "$ROOT/install/helpers/theme-palette.sh"
+nul_palette_callback() {
+  touch "$nul_callback_marker"
+}
+if dots_theme_palette_parse "$nul_palette/colors.toml" nul_palette_callback >/dev/null 2>&1; then
+  fail "theme palette parser accepted an actual NUL byte"
+fi
+[[ ! -e $nul_callback_marker ]] || fail "theme palette parser invoked a callback before rejecting NUL"
+printf '{{ bad }}\n' >"$palette_home/.config/dots/themed/nul.txt.tpl"
+if HOME="$palette_home" DOTS_PATH="$ROOT" \
+  "$ROOT/bin/dots-theme-set-templates" "$nul_palette" >/dev/null 2>&1; then
+  fail "theme renderer accepted a palette containing an actual NUL byte"
+fi
+[[ ! -e $nul_palette/nul.txt ]] || fail "theme renderer wrote output for a NUL-bearing palette"
+rm "$palette_home/.config/dots/themed/nul.txt.tpl"
+assertions=$((assertions + 3))
+
 # Layout-only generation validation is shared with migrations without taking
 # on the stricter theme-name and ownership-marker checks used by theme-set.
 layout_root="$SANDBOX/generation-layout"
