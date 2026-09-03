@@ -34,7 +34,7 @@ dots-update
 
 The command exits with status `0` only if each convergence stage succeeds. A
 stable release download or verification failure stops the pipeline before the
-migration and tool stages. Git, mise, or post-update hook failures cause the
+tool and migration stages. Git, mise, or post-update hook failures cause the
 message `Update incomplete.` and exit status `2`. If migrations fail, the
 command returns the first migration failure status.
 
