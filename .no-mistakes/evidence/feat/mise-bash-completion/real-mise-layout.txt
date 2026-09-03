@@ -1,0 +1,10 @@
+Real mise version: 2026.9.1 linux-x64 (2026-09-02)
+Configured tool path: /home/maxmiller/.no-mistakes/evidence/01M1M8SZJ8K85Y49P6CEJ6RDMJ/real-mise-data/installs/github-scop-bash-completion/2.18.0
+mise bin path: /home/maxmiller/.no-mistakes/evidence/01M1M8SZJ8K85Y49P6CEJ6RDMJ/real-mise-data/installs/github-scop-bash-completion/latest/completions
+Loader expected file: /home/maxmiller/.no-mistakes/evidence/01M1M8SZJ8K85Y49P6CEJ6RDMJ/real-mise-data/installs/github-scop-bash-completion/latest/bash_completion
+Expected loader file: MISSING
+Actual upstream loader: /home/maxmiller/.no-mistakes/evidence/01M1M8SZJ8K85Y49P6CEJ6RDMJ/real-mise-data/installs/github-scop-bash-completion/latest/bash-completion-2.18.0/bash_completion
+Actual tmux completion: /home/maxmiller/.no-mistakes/evidence/01M1M8SZJ8K85Y49P6CEJ6RDMJ/real-mise-data/installs/github-scop-bash-completion/latest/bash-completion-2.18.0/completions-core/tmux.bash
+Configured bin directory exists: NO
+Release root is absent from mise bin paths: YES
+Observable loader precedence with a preloaded system framework: 2 99
