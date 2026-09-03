@@ -420,7 +420,9 @@ done <"$normalized_mise"
 [[ ${mise_types[tools.github:scop/bash-completion.version]:-} == "basic-string" &&
   ${mise_values[tools.github:scop/bash-completion.version]:-} == "latest" &&
   ${mise_types[tools.github:scop/bash-completion.bin_path]:-} == "basic-string" &&
-  ${mise_values[tools.github:scop/bash-completion.bin_path]:-} == "completions" ]] ||
+  ${mise_values[tools.github:scop/bash-completion.bin_path]:-} == "completions" &&
+  ${mise_types[tools.github:scop/bash-completion.strip_components]:-} == "integer" &&
+  ${mise_values[tools.github:scop/bash-completion.strip_components]:-} == "1" ]] ||
   fail "mise config did not isolate Bash completion files from commands"
 duplicate_table="$SANDBOX/duplicate-table.toml"
 printf '[settings]\nminimum_release_age = "0s"\n[settings]\nother = "value"\n' >"$duplicate_table"
@@ -762,7 +764,7 @@ assert_contains "$out" "Update complete." "pipeline completes"
 assert_contains "$out" "stub mise install" "mise sync ran"
 mapfile -t mise_update_order <"$HOME/mise-update-order"
 [[ ${mise_update_order[0]:-} == \
-  "use --global github:scop/bash-completion[bin_path=completions]@latest" ]] ||
+  "use --global github:scop/bash-completion[bin_path=completions,strip_components=1]@latest" ]] ||
   fail "Bash completion migration did not run before mise install"
 [[ ${mise_update_order[1]:-} == "install" ]] ||
   fail "mise install did not follow the Bash completion migration"
