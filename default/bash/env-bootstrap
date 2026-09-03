@@ -3,10 +3,10 @@
 #   ~/.zshenv   (interactive and non-interactive Zsh sessions)
 #   ~/.zshrc    (interactive Zsh, including direct/manual sourcing)
 #
-# A non-default checkout is stored as plain data in ~/.config/dots/path. It is
-# deliberately never sourced as shell code. Newlines are rejected by the
-# installer, so one read recovers the path exactly, including spaces, quotes,
-# backticks, and dollar signs.
+# The active release or developer checkout is stored as plain data in
+# ~/.config/dots/path and deliberately never sourced as shell code. The
+# installer rejects newlines, so one read recovers the path exactly, including
+# spaces, quotes, backticks, and dollar signs.
 dots_path_file="$HOME/.config/dots/path"
 if [[ ( -e $dots_path_file || -L $dots_path_file ) && ( -L $dots_path_file || ! -f $dots_path_file ) ]]; then
   echo "Refusing non-regular checkout path file: $dots_path_file" >&2

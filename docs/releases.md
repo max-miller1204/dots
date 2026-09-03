@@ -5,14 +5,15 @@ stable semantic versions (`X.Y.Z`) and matching Git tags (`vX.Y.Z`). Update and
 commit `version` before creating the tag; the release build fails if they do not
 match. Publish fixes as a new version rather than replacing an existing release.
 
-Pushing a version tag runs the GitHub release workflow. It builds and
-smoke-tests `dots-X.Y.Z.tar.gz`, then publishes that archive, `install.sh`,
-`SHA256SUMS`, and the updater-readable `dots-release.txt` manifest on the
-GitHub release. The generated installer pins that release's archive name and
-SHA-256; it checks the artifact's integrity before delegating to the packaged
-transactional installer. Release artifacts are not cryptographically signed,
-so this check depends on the published checksum remaining trustworthy. The
-archive contains only the versioned runtime payload:
+Pushing a version tag runs the GitHub release workflow. Its macOS and Ubuntu
+jobs build and smoke-test the release outputs; the publish job downloads and
+publishes the Ubuntu job's tested outputs without rebuilding them. Those
+outputs are `dots-X.Y.Z.tar.gz`, `install.sh`, `SHA256SUMS`, and the
+updater-readable `dots-release.txt` manifest. The generated installer pins that
+release's archive name and SHA-256; it checks the artifact's integrity before
+delegating to the packaged transactional installer. Release artifacts are not
+cryptographically signed, so this check depends on the published checksum
+remaining trustworthy. The archive contains only the versioned runtime payload:
 `bin`, `config`, `default`, `install`, `migrations`, `themes`, and `version`,
 under a `dots-X.Y.Z` directory.
 

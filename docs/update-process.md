@@ -31,7 +31,9 @@ dots-update
 The command exits `0` only after every convergence stage succeeds. A stable release download or verification failure stops before tools and
 migrations run. Git, mise, or post-update hook failures are reported as
 `Update incomplete.` with exit status `2`; migration failures retain their own
-nonzero status. A locally modified developer checkout remains untouched and is
+nonzero status. Migration processing continues past individual failures, then
+skips the post-update hook while still running log analysis and restart
+reporting. A locally modified developer checkout remains untouched and is
 reported as incomplete. Stable updates never inspect or mutate the editable
 source checkout.
 

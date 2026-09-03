@@ -6,7 +6,7 @@
 # file limited to the shared environment bootstrap; interactive setup belongs
 # in ~/.zshrc.
 
-# Resolve plain checkout-path data before env-bootstrap itself is available.
+# Resolve plain runtime-path data before env-bootstrap itself is available.
 dots_bootstrap_path=""
 if [[ ( -e $HOME/.config/dots/path || -L $HOME/.config/dots/path ) &&
       ( -L $HOME/.config/dots/path || ! -f $HOME/.config/dots/path ) ]]; then

@@ -183,7 +183,7 @@ source "$DOTS_PATH/install/packages.sh"
 # replaces them. Clear the update-lock sentinel along with fd 9 so this
 # standalone install reports any restart markers produced by migrations.
 if ((install_done == 1)); then
-  DOTS_UPDATE_LOCK_PID= "$DOTS_PATH/bin/dots-migrate" 9>&-
+  DOTS_UPDATE_LOCK_PID="" "$DOTS_PATH/bin/dots-migrate" 9>&-
 fi
 
 # 3. Seed configs: config/** -> ~/.config/**, backing up anything replaced
