@@ -52,6 +52,10 @@ dots_theme_palette_parse() { # <colors.toml> <callback>
     echo "Invalid theme palette: NUL byte is not allowed: $file" >&2
     return 1
   fi
+  if ! iconv -f UTF-8 -t UTF-8 "$file" >/dev/null 2>&1; then
+    echo "Invalid theme palette: input is not valid UTF-8: $file" >&2
+    return 1
+  fi
 
   while IFS= read -r line || [[ -n $line ]]; do
     ((line_number += 1))
@@ -129,7 +133,7 @@ dots_theme_palette_parse() { # <colors.toml> <callback>
         esac
         value+=$decoded
       else
-        [[ $ch != $'\r' && $ch != $'\t' && $ch != [$'\x01'-$'\x08'$'\x0b'$'\x0c'$'\x0e'-$'\x1f'$'\x7f'] ]] || {
+        [[ $ch != $'\r' && $ch != [$'\x01'-$'\x08'$'\x0b'$'\x0c'$'\x0e'-$'\x1f'$'\x7f'] ]] || {
           dots_theme_palette_error "$file" "$line_number" 'unescaped control character in string' || return
         }
         value+=$ch

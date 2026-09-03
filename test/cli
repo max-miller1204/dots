@@ -830,9 +830,11 @@ mkdir -p "$palette_theme" "$palette_home/.config/dots/themed"
 cp "$ROOT/themes/tokyo-night/colors.toml" "$palette_theme/colors.toml"
 printf '  # spaced comment\ncustom = "quote: \\" slash: \\\\ tab:\\t unicode-tab:\\u0009 unicode:\\u263A" # trailing\n' >>\
   "$palette_theme/colors.toml"
-printf '{{ custom }}\n' >"$palette_home/.config/dots/themed/parser.txt.tpl"
+printf '%s' $'literal_tab = "before\tafter"\n' >>"$palette_theme/colors.toml"
+printf '{{ custom }}\n{{ literal_tab }}\n' >"$palette_home/.config/dots/themed/parser.txt.tpl"
 HOME="$palette_home" DOTS_PATH="$ROOT" "$ROOT/bin/dots-theme-set-templates" "$palette_theme"
-[[ $(cat "$palette_theme/parser.txt") == $'quote: " slash: \\ tab:\t unicode-tab:\t unicode:☺' ]] ||
+[[ $(cat "$palette_theme/parser.txt") == \
+  $'quote: " slash: \\ tab:\t unicode-tab:\t unicode:☺\nbefore\tafter' ]] ||
   fail "theme palette parser did not decode safe basic-string escapes"
 rm "$palette_home/.config/dots/themed/parser.txt.tpl"
 
@@ -890,6 +892,20 @@ fi
 [[ ! -e $nul_palette/nul.txt ]] || fail "theme renderer wrote output for a NUL-bearing palette"
 rm "$palette_home/.config/dots/themed/nul.txt.tpl"
 assertions=$((assertions + 3))
+
+invalid_utf8_palette="$SANDBOX/invalid-palette-utf8"
+mkdir -p "$invalid_utf8_palette"
+cp "$ROOT/themes/tokyo-night/colors.toml" "$invalid_utf8_palette/colors.toml"
+printf 'bad = "before\377after"\n' >>"$invalid_utf8_palette/colors.toml"
+printf '{{ bad }}\n' >"$palette_home/.config/dots/themed/invalid-utf8.txt.tpl"
+if HOME="$palette_home" DOTS_PATH="$ROOT" \
+  "$ROOT/bin/dots-theme-set-templates" "$invalid_utf8_palette" >/dev/null 2>&1; then
+  fail "theme renderer accepted malformed UTF-8 palette bytes"
+fi
+[[ ! -e $invalid_utf8_palette/invalid-utf8.txt ]] ||
+  fail "theme renderer wrote output for malformed UTF-8 palette bytes"
+rm "$palette_home/.config/dots/themed/invalid-utf8.txt.tpl"
+assertions=$((assertions + 2))
 
 # Layout-only generation validation is shared with migrations without taking
 # on the stricter theme-name and ownership-marker checks used by theme-set.
