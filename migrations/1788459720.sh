@@ -6,7 +6,8 @@ set -euo pipefail
 
 source "$DOTS_PATH/install/helpers/files.sh"
 
-if ! "$DOTS_PATH/bin/dots-pkg-add" github:scop/bash-completion@latest; then
+if ! "$DOTS_PATH/bin/dots-pkg-add" \
+  'github:scop/bash-completion[bin_path=.mise-empty-bin]@latest'; then
   echo "Could not add Bash completion. The migration will retry during the next update." >&2
   exit 1
 fi

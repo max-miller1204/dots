@@ -756,7 +756,8 @@ out=$(PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$checkout" "$ROOT/bin/dots-update")
 assert_contains "$out" "Update complete." "pipeline completes"
 assert_contains "$out" "stub mise install" "mise sync ran"
 mapfile -t mise_update_order <"$HOME/mise-update-order"
-[[ ${mise_update_order[0]:-} == "use --global github:scop/bash-completion@latest" ]] ||
+[[ ${mise_update_order[0]:-} == \
+  "use --global github:scop/bash-completion[bin_path=.mise-empty-bin]@latest" ]] ||
   fail "Bash completion migration did not run before mise install"
 [[ ${mise_update_order[1]:-} == "install" ]] ||
   fail "mise install did not follow the Bash completion migration"
