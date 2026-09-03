@@ -1,9 +1,7 @@
 # dots
 
 Dots manages personal configuration files for macOS, Ubuntu, and Windows
-Subsystem for Linux (WSL).
-Dots copies the configuration files. Dots does not create symbolic links for
-these files.
+Subsystem for Linux (WSL).\
 Immutable GitHub release bundles provide the command runtime.
 [mise](https://mise.jdx.dev) installs the same tools on each platform.
 
