@@ -37,7 +37,7 @@ dots_theme_palette_decode_unicode() { # <codepoint>; sets DOTS_THEME_DECODED
 # shellcheck disable=SC2094
 dots_theme_palette_parse() { # <colors.toml> <callback>
   local file=$1 callback=$2 line line_number=0 key rest value ch escape hex decoded
-  local index length codepoint complete byte_dump
+  local index length codepoint complete byte_dump checked_line
   local -A seen=()
 
   [[ ! -L $file && -f $file ]] || {
@@ -59,6 +59,11 @@ dots_theme_palette_parse() { # <colors.toml> <callback>
 
   while IFS= read -r line || [[ -n $line ]]; do
     ((line_number += 1))
+    checked_line=${line%$'\r'}
+    [[ $checked_line != *$'\r'* &&
+      $checked_line != *[$'\x01'-$'\x08'$'\x0b'-$'\x1f'$'\x7f']* ]] || {
+      dots_theme_palette_error "$file" "$line_number" 'forbidden control character' || return
+    }
     rest=$line
     rest=${rest#"${rest%%[!$' \t\r']*}"}
     [[ -z $rest || ${rest:0:1} == "#" ]] && continue

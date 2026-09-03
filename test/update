@@ -458,7 +458,19 @@ printf '[settings]\nminimum_release_age = "before\tafter"\n[tools]\nescaped = "b
 tab_model=$(normalize_mise_toml "$tab_toml") || fail "TOML normalizer rejected permitted tabs"
 [[ $tab_model == $'basic-string\tsettings.minimum_release_age\tbefore\tafter\nbasic-string\ttools.escaped\tbefore\tafter' ]] ||
   fail "TOML normalizer did not preserve permitted tabs"
-assertions=$((assertions + 12))
+for control_location in separator comment suffix; do
+  control_location_file="$SANDBOX/control-$control_location.toml"
+  case $control_location in
+    separator) control_setting=$'minimum_release_age\v= "0s"' ;;
+    comment) control_setting=$'minimum_release_age = "0s" # comment\177' ;;
+    suffix) control_setting=$'minimum_release_age = "0s"\v' ;;
+  esac
+  printf '[settings]\n%s\n' "$control_setting" >"$control_location_file"
+  if normalize_mise_toml "$control_location_file" >/dev/null 2>&1; then
+    fail "TOML normalizer accepted a control in the $control_location location"
+  fi
+done
+assertions=$((assertions + 15))
 
 # --- free-space guard
 DOTS_UPDATE_MIN_FREE_KB=1 "$ROOT/bin/dots-update-requires-free-space" ||

@@ -856,6 +856,8 @@ for invalid_palette_line in \
   'bad = "unsafe\u000Avalue"' \
   'bad = "unsafe\u0001value"' \
   'bad = "unsafe\U0000007Fvalue"' \
+  $'bad\v= "unsafe separator"' \
+  $'# unsafe comment\177' \
   'bad = "unterminated'; do
   invalid_palette="$SANDBOX/invalid-palette-$RANDOM"
   mkdir -p "$invalid_palette"

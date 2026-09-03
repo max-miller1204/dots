@@ -159,6 +159,11 @@ function normalize_inline(path, value, body, count, parts, position, separator, 
 }
 
 {
+  raw_line = $0
+  sub(/\r$/, "", raw_line)
+  if (raw_line ~ /[\001-\010\013-\037\177]/) {
+    fail("forbidden control on line " NR)
+  }
   line = trim(uncomment($0))
   if (line == "") next
   if (line ~ /^\[[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*\]$/) {
