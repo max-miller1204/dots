@@ -4,7 +4,35 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+        with:
+          install: false
+
+      - name: Install lint tools
+        run: ./bin/dots pkg add actionlint@latest shellcheck@latest
+
+      - name: Check GitHub Actions workflows
+        run: actionlint
+
+      - name: Check shell scripts
+        run: |
+          mapfile -d '' shell_files < <(
+            find bin install migrations scripts test .github/scripts \
+              -type f \( -name '*.sh' -o -perm -u=x \) -print0
+          )
+          shellcheck -s bash -x -e SC1091,SC2016,SC2034,SC2317 "${shell_files[@]}"
+
   test:
     strategy:
       fail-fast: false

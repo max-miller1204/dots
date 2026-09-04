@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+
+# Pull request description policy tests.
+
+set -eo pipefail
+
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=test/helpers.sh
+source "$ROOT/test/helpers.sh"
+setup_sandbox
+
+validator="$ROOT/.github/scripts/validate-pr-description"
+
+expect_valid() { # expect_valid <file> <label>
+  local file=$1 label=$2 output
+
+  if ! output=$("$validator" <"$file" 2>&1); then
+    fail "$label: expected a valid description:
+$output"
+  fi
+  assert_contains "$output" "Pull request description is valid." "$label"
+}
+
+expect_invalid() { # expect_invalid <file> <message> <label>
+  local file=$1 message=$2 label=$3 output
+
+  if output=$("$validator" "$file" 2>&1); then
+    fail "$label: expected an invalid description"
+  fi
+  assert_contains "$output" "$message" "$label"
+}
+
+cat >"$SANDBOX/complete.md" <<'EOF'
+## Summary
+
+Add a pull request policy.
+
+## Changes
+
+- Add a template.
+- Check required sections.
+
+## Related issue
+
+Closes #123
+
+## Testing
+
+### Reproduction steps
+
+1. Open a pull request.
+2. Complete each required section.
+
+### Evidence
+
+The policy check passes with this description.
+EOF
+expect_valid "$SANDBOX/complete.md" "complete description"
+
+cat >"$SANDBOX/no-issue.md" <<'EOF'
+## Summary
+
+Correct a documentation error.
+
+## Changes
+
+- Correct the command example.
+
+## Testing
+
+### Reproduction steps
+
+1. Read the rendered documentation.
+
+### Evidence
+
+The command is correct in the rendered page.
+EOF
+expect_valid "$SANDBOX/no-issue.md" "description without related issue"
+
+expect_invalid "$ROOT/.github/pull_request_template.md" \
+  "Add content to ## Summary." "unchanged template"
+
+cat >"$SANDBOX/missing-evidence.md" <<'EOF'
+## Summary
+
+Add a command.
+
+## Changes
+
+- Add the command implementation.
+
+## Testing
+
+### Reproduction steps
+
+1. Run the command.
+EOF
+expect_invalid "$SANDBOX/missing-evidence.md" \
+  "Add ### Evidence to the ## Testing section." "missing evidence heading"
+
+cat >"$SANDBOX/empty-reproduction.md" <<'EOF'
+## Summary
+
+Add a command.
+
+## Changes
+
+- Add the command implementation.
+
+## Testing
+
+### Reproduction steps
+
+1.
+
+### Evidence
+
+The command printed the expected result.
+EOF
+expect_invalid "$SANDBOX/empty-reproduction.md" \
+  "Add content to ### Reproduction steps." "empty reproduction steps"
+
+cat >"$SANDBOX/wrong-order.md" <<'EOF'
+## Changes
+
+- Add a policy.
+
+## Summary
+
+Require useful pull request descriptions.
+
+## Testing
+
+### Reproduction steps
+
+1. Submit a complete description.
+
+### Evidence
+
+The policy check passes.
+EOF
+expect_invalid "$SANDBOX/wrong-order.md" \
+  "Put ## Summary before ## Changes." "wrong section order"
+
+cat >"$SANDBOX/issue-after-testing.md" <<'EOF'
+## Summary
+
+Add a policy.
+
+## Changes
+
+- Check the section order.
+
+## Testing
+
+### Reproduction steps
+
+1. Submit this description.
+
+### Evidence
+
+The policy check reports the order error.
+
+## Related issue
+EOF
+expect_invalid "$SANDBOX/issue-after-testing.md" \
+  "Put ## Related issue before ## Testing." "optional issue section order"
+
+echo "pr-description: $assertions assertions passed"

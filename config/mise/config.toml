@@ -2,9 +2,11 @@
 minimum_release_age = "0s"
 
 [tools]
+actionlint = "latest"
 bat = "latest"
-claude = "2"
+claude = "latest"
 codex = "latest"
+direnv = "latest"
 eza = "latest"
 fastfetch = "latest"
 fd = "latest"
@@ -20,13 +22,14 @@ jq = "latest"
 lazygit = "latest"
 neovim = "latest"
 node = "lts"
-"npm:@playwright/cli" = "latest"
+"npm:@playwright/cli" = "0.1.18"
 # Stepstone is this setup's own low-volume package; Aube otherwise refuses it.
 "npm:stepstone" = { version = "latest", allow_low_downloads = true }
 opencode = "latest"
 pi = "latest"
 python = "latest"
 ripgrep = "latest"
+shellcheck = "latest"
 starship = "latest"
 tmux = "latest"
 zoxide = "latest"

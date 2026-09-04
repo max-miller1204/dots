@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+awk '
+function add_error(message) {
+  errors[++error_count] = message
+}
+
+function trim(value) {
+  gsub(/^[ \t]+|[ \t]+$/, "", value)
+  return value
+}
+
+function strip_comments(value, start, finish, prefix, suffix) {
+  while (1) {
+    if (in_comment) {
+      finish = index(value, "-->")
+      if (!finish) {
+        return ""
+      }
+      value = substr(value, finish + 3)
+      in_comment = 0
+    }
+
+    start = index(value, "<!--")
+    if (!start) {
+      return value
+    }
+
+    prefix = substr(value, 1, start - 1)
+    suffix = substr(value, start + 4)
+    finish = index(suffix, "-->")
+    if (!finish) {
+      in_comment = 1
+      return prefix
+    }
+    value = prefix substr(suffix, finish + 3)
+  }
+}
+
+function is_meaningful(value) {
+  value = trim(value)
+  if (!length(value) || value ~ /^[-*+]$/ || value ~ /^[0-9]+[.)]$/) {
+    return 0
+  }
+  return 1
+}
+
+function record_heading(key, label) {
+  if (seen[key]) {
+    add_error("Use only one " label " heading.")
+  } else {
+    seen[key] = NR
+  }
+}
+
+function record_top_heading(key) {
+  if (!length(first_top_heading)) {
+    first_top_heading = key
+  }
+}
+
+{
+  line = $0
+  sub(/\r$/, "", line)
+  line = strip_comments(line)
+  heading = trim(line)
+
+  if (heading == "## Summary") {
+    record_top_heading("summary")
+    record_heading("summary", "## Summary")
+    top_section = "summary"
+    section = "summary"
+    next
+  }
+  if (heading == "## Changes") {
+    record_top_heading("changes")
+    record_heading("changes", "## Changes")
+    top_section = "changes"
+    section = "changes"
+    next
+  }
+  if (heading == "## Related issue") {
+    record_top_heading("issue")
+    record_heading("issue", "## Related issue")
+    top_section = "issue"
+    section = "issue"
+    next
+  }
+  if (heading == "## Testing") {
+    record_top_heading("testing")
+    record_heading("testing", "## Testing")
+    top_section = "testing"
+    section = "testing"
+    next
+  }
+  if (heading == "### Reproduction steps") {
+    record_heading("reproduction", "### Reproduction steps")
+    if (top_section != "testing") {
+      add_error("Put ### Reproduction steps in the ## Testing section.")
+    }
+    section = "reproduction"
+    next
+  }
+  if (heading == "### Evidence") {
+    record_heading("evidence", "### Evidence")
+    if (top_section != "testing") {
+      add_error("Put ### Evidence in the ## Testing section.")
+    }
+    section = "evidence"
+    next
+  }
+
+  if (heading ~ /^##[ \t]+/) {
+    record_top_heading("other")
+    top_section = "other"
+    section = "other"
+    next
+  }
+
+  if (section == "summary" || section == "changes" ||
+      section == "reproduction" || section == "evidence") {
+    if (is_meaningful(line)) {
+      has_content[section] = 1
+    }
+  }
+}
+
+END {
+  if (!seen["summary"]) {
+    add_error("Add the ## Summary section.")
+  }
+  if (!seen["changes"]) {
+    add_error("Add the ## Changes section.")
+  }
+  if (!seen["testing"]) {
+    add_error("Add the ## Testing section.")
+  }
+  if (!seen["reproduction"]) {
+    add_error("Add ### Reproduction steps to the ## Testing section.")
+  }
+  if (!seen["evidence"]) {
+    add_error("Add ### Evidence to the ## Testing section.")
+  }
+
+  if (seen["summary"] && first_top_heading != "summary") {
+    add_error("Make ## Summary the first level-two section.")
+  }
+  if (seen["summary"] && seen["changes"] && seen["summary"] > seen["changes"]) {
+    add_error("Put ## Summary before ## Changes.")
+  }
+  if (seen["changes"] && seen["testing"] && seen["changes"] > seen["testing"]) {
+    add_error("Put ## Changes before ## Testing.")
+  }
+  if (seen["issue"] && seen["changes"] && seen["issue"] < seen["changes"]) {
+    add_error("Put ## Related issue after ## Changes.")
+  }
+  if (seen["issue"] && seen["testing"] && seen["issue"] > seen["testing"]) {
+    add_error("Put ## Related issue before ## Testing.")
+  }
+  if (seen["testing"] && seen["reproduction"] && seen["testing"] > seen["reproduction"]) {
+    add_error("Put ### Reproduction steps after ## Testing.")
+  }
+  if (seen["reproduction"] && seen["evidence"] && seen["reproduction"] > seen["evidence"]) {
+    add_error("Put ### Reproduction steps before ### Evidence.")
+  }
+
+  required_content[1] = "summary"
+  required_content[2] = "changes"
+  required_content[3] = "reproduction"
+  required_content[4] = "evidence"
+  content_labels["summary"] = "## Summary"
+  content_labels["changes"] = "## Changes"
+  content_labels["reproduction"] = "### Reproduction steps"
+  content_labels["evidence"] = "### Evidence"
+  for (item = 1; item <= 4; item++) {
+    key = required_content[item]
+    if (seen[key] && !has_content[key]) {
+      add_error("Add content to " content_labels[key] ".")
+    }
+  }
+
+  if (error_count) {
+    print "Pull request description is invalid:" > "/dev/stderr"
+    for (item = 1; item <= error_count; item++) {
+      print "- " errors[item] > "/dev/stderr"
+    }
+    exit 1
+  }
+
+  print "Pull request description is valid."
+}
+' "${1:-/dev/stdin}"
