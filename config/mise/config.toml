@@ -10,16 +10,17 @@ fastfetch = "latest"
 fd = "latest"
 fzf = "latest"
 gh = "latest"
-"github:can1357/oh-my-pi" = "latest"
+"github:koalaman/shellcheck" = "latest"
 "github:scop/bash-completion" = { version = "latest", bin_path = "completions", strip_components = 1 }
 go = "latest"
 gum = "latest"
 herdr = "latest"
+hunkdiff = "latest"
 jq = "latest"
 lazygit = "latest"
 neovim = "latest"
 node = "lts"
-"npm:@playwright/cli" = "latest"
+"npm:@playwright/cli" = { version = "latest", trust_policy_excludes = ["@playwright/cli@0.1.19", "playwright@1.63.0-alpha-2026-08-31", "playwright-core@1.63.0-alpha-2026-08-31"] }
 # Stepstone is this setup's own low-volume package; Aube otherwise refuses it.
 "npm:stepstone" = { version = "latest", allow_low_downloads = true }
 opencode = "latest"

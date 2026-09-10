@@ -103,7 +103,6 @@ if command -v mise >/dev/null 2>&1; then
     fd@latest
     fzf@latest
     gh@latest
-    github:can1357/oh-my-pi@latest
     go@latest
     gum@latest
     herdr@latest

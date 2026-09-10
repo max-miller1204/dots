@@ -195,7 +195,9 @@ mise install
 
 The mise npm backend uses the embedded Aube package manager. Aube rejects
 packages with low download counts unless the manifest explicitly approves the
-packages. Stepstone is a reviewed first-party tool for this setup. Therefore,
+packages. The Playwright CLI entry contains exact trust-policy exceptions for
+its reviewed prerelease dependency chain. Stepstone is a reviewed first-party
+tool for this setup. Therefore,
 the Stepstone manifest entry has the narrow `allow_low_downloads = true`
 exception. The setting does not disable the Aube checks globally. The setting
 also does not approve transitive packages.

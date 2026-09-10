@@ -424,6 +424,10 @@ done <"$normalized_mise"
   ${mise_types[tools.github:scop/bash-completion.strip_components]:-} == "integer" &&
   ${mise_values[tools.github:scop/bash-completion.strip_components]:-} == "1" ]] ||
   fail "mise config did not isolate Bash completion files from commands"
+playwright_trust_excludes="@playwright/cli@0.1.19,playwright@1.63.0-alpha-2026-08-31,playwright-core@1.63.0-alpha-2026-08-31"
+[[ ${mise_types[tools.npm:@playwright/cli.trust_policy_excludes]:-} == "basic-string-array" &&
+  ${mise_values[tools.npm:@playwright/cli.trust_policy_excludes]:-} == "$playwright_trust_excludes" ]] ||
+  fail "mise config lost the reviewed Playwright trust-policy exceptions"
 duplicate_table="$SANDBOX/duplicate-table.toml"
 printf '[settings]\nminimum_release_age = "0s"\n[settings]\nother = "value"\n' >"$duplicate_table"
 if normalize_mise_toml "$duplicate_table" >/dev/null 2>&1; then
@@ -487,7 +491,7 @@ for control_location in separator comment suffix; do
     fail "TOML normalizer accepted a control in the $control_location location"
   fi
 done
-assertions=$((assertions + 16))
+assertions=$((assertions + 17))
 
 # --- free-space guard
 DOTS_UPDATE_MIN_FREE_KB=1 "$ROOT/bin/dots-update-requires-free-space" ||

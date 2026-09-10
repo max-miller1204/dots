@@ -132,11 +132,68 @@ function record(type, path, value, inline_parent, parent, existing) {
   print type "\t" path "\t" value
 }
 
+function split_top_level(value, parts, position, character, quoted, escaped, depth, count, part) {
+  count = 0
+  part = ""
+  for (position = 1; position <= length(value); position++) {
+    character = substr(value, position, 1)
+    if (quoted) {
+      part = part character
+      if (escaped) {
+        escaped = 0
+      } else if (character == "\\") {
+        escaped = 1
+      } else if (character == "\"") {
+        quoted = 0
+      }
+    } else if (character == "\"") {
+      quoted = 1
+      part = part character
+    } else if (character == "[") {
+      depth++
+      part = part character
+    } else if (character == "]") {
+      depth--
+      if (depth < 0) fail("unmatched array delimiter on line " NR)
+      part = part character
+    } else if (character == "," && depth == 0) {
+      parts[++count] = trim(part)
+      part = ""
+    } else {
+      part = part character
+    }
+  }
+  if (quoted || escaped || depth != 0) fail("unterminated value on line " NR)
+  parts[++count] = trim(part)
+  return count
+}
+
+function normalize_array(path, value, inline_parent, body, count, parts, position, decoded, result) {
+  if (substr(value, 1, 1) != "[" || substr(value, length(value), 1) != "]") {
+    fail("invalid array for " path " on line " NR)
+  }
+  body = trim(substr(value, 2, length(value) - 2))
+  if (body == "") {
+    record("basic-string-array", path, "", inline_parent)
+    return
+  }
+  count = split_top_level(body, parts)
+  result = ""
+  for (position = 1; position <= count; position++) {
+    if (parts[position] == "") fail("empty array item on line " NR)
+    decoded = decode_basic_string(parts[position])
+    result = result (position == 1 ? "" : ",") decoded
+  }
+  record("basic-string-array", path, result, inline_parent)
+}
+
 function normalize_scalar(path, value, inline_parent, decoded) {
   value = trim(value)
   if (value ~ /^"/) {
     decoded = decode_basic_string(value)
     record("basic-string", path, decoded, inline_parent)
+  } else if (value ~ /^\[/) {
+    normalize_array(path, value, inline_parent)
   } else if (value == "true" || value == "false") {
     record("boolean", path, value, inline_parent)
   } else if (value ~ /^(0|[1-9][0-9]*)$/) {
@@ -150,7 +207,7 @@ function normalize_inline(path, value, body, count, parts, position, separator, 
   body = trim(substr(value, 2, length(value) - 2))
   record("inline-table", path, "")
   if (body == "") return
-  count = split(body, parts, /,[[:space:]]*/)
+  count = split_top_level(body, parts)
   for (position = 1; position <= count; position++) {
     separator = assignment_separator(parts[position])
     if (!separator) fail("invalid inline table on line " NR)

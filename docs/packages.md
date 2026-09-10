@@ -58,6 +58,10 @@ comparison with Omarchy.
 Mise uses the embedded Aube package manager to install `npm:` tools. Before
 installation, Aube applies security and popularity checks.
 
+The Playwright CLI entry excludes the reviewed package versions that its
+current prerelease dependency chain uses from the trust policy. The exception
+applies only to those exact versions.
+
 This setup includes Stepstone. Stepstone has a low npm download count. The
 Stepstone manifest entry uses this limited exception:
 
