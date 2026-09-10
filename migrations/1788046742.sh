@@ -104,7 +104,6 @@ if command -v mise >/dev/null 2>&1; then
     fzf@latest
     gh@latest
     github:can1357/oh-my-pi@latest
-    github:kunchenguid/no-mistakes@latest
     go@latest
     gum@latest
     herdr@latest
