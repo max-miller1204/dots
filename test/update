@@ -30,6 +30,26 @@ HOME="$bash_completion_home" PATH="$SANDBOX/stub:$PATH" DOTS_PATH="$ROOT" \
   fail "Bash completion migration did not request a shell restart"
 assertions=$((assertions + 1))
 
+# The credential helper migration repoints version-pinned gh paths at the
+# mise shim and leaves other helpers alone.
+credential_home="$SANDBOX/credential-migration-home"
+mkdir -p "$credential_home/.config/git"
+cat >"$credential_home/.config/git/config" <<'EOF'
+[credential "https://github.com"]
+	helper =
+	helper = !/opt/mise/installs/gh/2.102.0/gh_2.102.0_linux_amd64/bin/gh auth git-credential
+[credential "https://gist.github.com"]
+	helper = osxkeychain
+EOF
+HOME="$credential_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1793558193.sh" >/dev/null
+credential_helpers=$(git config --file "$credential_home/.config/git/config" \
+  --get-all credential.https://github.com.helper | tr '\n' '|')
+[[ $credential_helpers == '|!"$HOME/.local/share/mise/shims/gh" auth git-credential|' ]] ||
+  fail "credential migration did not repoint the pinned gh helper (got $credential_helpers)"
+[[ $(git config --file "$credential_home/.config/git/config" --get credential.https://gist.github.com.helper) == "osxkeychain" ]] ||
+  fail "credential migration changed an unpinned helper"
+assertions=$((assertions + 1))
+
 # A missing macOS flock is diagnosed without mutating package state.
 flock_stub="$SANDBOX/flock-diagnostic-stub"
 mkdir -p "$flock_stub"
