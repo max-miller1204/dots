@@ -25,9 +25,11 @@ jq = "latest"
 lazygit = "latest"
 neovim = "latest"
 node = "lts"
+"npm:@cocal/google-calendar-mcp" = "2.8.1"
 "npm:@deepseek-ai/dsh" = "latest"
 "npm:@earendil-works/pi-coding-agent" = "latest"
 "npm:@playwright/cli" = "latest"
+"npm:obsidian-headless" = { version = "latest", allow_builds = ["better-sqlite3"] }
 "npm:remotion" = "latest"
 "npm:stepstone" = { version = "latest", allow_low_downloads = true }
 opencode = "latest"

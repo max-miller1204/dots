@@ -70,6 +70,17 @@ download-count gate. The option does not disable the gate globally. The option
 does not automatically exempt transitive dependencies. By design, the separate
 global release-age policy remains `0s`.
 
+Aube does not run dependency build scripts unless a manifest entry approves
+them. Obsidian Headless needs the native `better-sqlite3` module, so its entry
+approves that one package:
+
+```toml
+"npm:obsidian-headless" = { version = "latest", allow_builds = ["better-sqlite3"] }
+```
+
+Without the option, `ob` installs but fails with "Could not locate the
+bindings file".
+
 ## Fonts
 
 The Terminal and Starship defaults use only platform font glyphs. Dots does not
