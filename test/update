@@ -50,6 +50,33 @@ credential_helpers=$(git config --file "$credential_home/.config/git/config" \
   fail "credential migration changed an unpinned helper"
 assertions=$((assertions + 1))
 
+# The tmux tab style migration adds the override once, after the current
+# window format, and leaves configs that already set a style alone.
+tmux_home="$SANDBOX/tmux-migration-home"
+mkdir -p "$tmux_home/.config/tmux"
+cat >"$tmux_home/.config/tmux/tmux.conf" <<'EOF2'
+set -g window-status-format "#[fg=brightblack] #I:#W "
+set -g window-status-current-format "#[fg=blue,bold] #I:#W "
+set -g pane-border-style "fg=brightblack"
+EOF2
+for _ in 1 2; do
+  HOME="$tmux_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1794703557.sh" >/dev/null
+done
+[[ $(grep -c 'window-status-current-style "none"' "$tmux_home/.config/tmux/tmux.conf") == 1 ]] ||
+  fail "tmux migration did not add the style line exactly once"
+[[ $(grep -A1 'window-status-current-format' "$tmux_home/.config/tmux/tmux.conf" | tail -1) == 'set -g window-status-current-style "none"' ]] ||
+  fail "tmux migration did not place the style after the current format"
+tmux_custom_home="$SANDBOX/tmux-migration-custom-home"
+mkdir -p "$tmux_custom_home/.config/tmux"
+cat >"$tmux_custom_home/.config/tmux/tmux.conf" <<'EOF2'
+set -g window-status-current-format "#I:#W"
+set -g window-status-current-style "bold"
+EOF2
+HOME="$tmux_custom_home" DOTS_PATH="$ROOT" bash "$ROOT/migrations/1794703557.sh" >/dev/null
+[[ $(grep -c 'window-status-current-style' "$tmux_custom_home/.config/tmux/tmux.conf") == 1 ]] ||
+  fail "tmux migration changed a config that already sets a style"
+assertions=$((assertions + 1))
+
 # A missing macOS flock is diagnosed without mutating package state.
 flock_stub="$SANDBOX/flock-diagnostic-stub"
 mkdir -p "$flock_stub"
